@@ -1,4 +1,4 @@
-# Creative Studio 0.3 — arbetsytan
+# Creative Studio 0.4 — arbetsytan
 
 Canvasen sitter kvar i mitten. Verktygsväxling öppnar en panel och lämnar projekt,
 spelhuvud, markering och historik intakta. PhotoCraft och LightCraft kan därför
@@ -19,9 +19,11 @@ synliga miniatyrer skapas; cachen är högst 128 bilder och två avkodare, separ
 från uppspelning. Vid mycket långa tidslinjer flyttas det synliga fönstret kring
 spelhuvudet för att undvika webbläsarens maximala elementbredd.
 
-**Spår** visar den sekventiella mediekanalen, originalljud och ett tidsband per
-pensel-/textlager. Dra bandets ändhandtag för att ändra lagrets tidsomfattning.
-Detta är ännu inte flera oberoende videospår eller en ljudmixer.
+**Spår** visar flera oberoende video- och ljudspår samt tidsband för lager.
+Dra klipphuvudet för att ändra start/spår och klippets kanter för att trimma.
+Dra lagerbandets ändhandtag för att ändra lagrets tidsomfattning. FilmCrafts
+effektinspektör visar riktiga parametrar och keyframes; ljudmixern använder
+spår, gain, mute och native effekter för både uppspelning och export.
 
 Redigeringens omfattning visas ovanför canvasen. Reglage och pensel fångar sitt
 scope när gesten börjar; en fördröjd uppdatering får aldrig byta mål efter en ny
@@ -37,11 +39,13 @@ panel eller tidsband. Flyttaverktyget drar det valda lagret på canvasen. Lager
 kan skalas likformigt och roteras kring canvascentrum; text använder samma
 PhotoCraft Affine-transform. Rektangulära masker och penselmarkeringar ligger
 fortfarande i canvasens koordinater och följer inte lagertransformen.
-Perspektivtransform, objektets egna handtag och penselmasker återstår.
+Native lager erbjuder dessutom PhotoCrafts penselmasker och fria
+transformationsmatriser genom originalkommandona. Interaktiva handtag för fri
+transform och perspektiv behöver fortsatt UI-arbete.
 
-FilmCraft-trimning skapar en tillfällig vy för `filmcraft-edit::trim`. Ingen
-FilmCraft Session eller separat sparad FilmCraft-fil skapas. Gemensamma scopes
-klipps till det behållna intervallet och räknas om mot samma källbildrutor.
+FilmCraft-kommandon skapar en tillfällig vy över projektets auktoritativa
+sekvens. Ingen separat sparad FilmCraft-fil eller innehållshistorik skapas.
+Gemensamma scopes klipps till det behållna intervallet och räknas om mot samma källbildrutor.
 Omordning behåller klipp-ID, lokal bildruta och tillhörande operationer. Ljudets
 volym gäller både preview och export.
 
@@ -52,7 +56,7 @@ att märka manuellt arbete som sparat. Startvyn och projektlistan erbjuder
 återställning. Återställning av backup-media använder en enda IndexedDB-
 transaktion så att ett lagringsfel inte lämnar ett halvåterställt mediebibliotek.
 
-WebM kan laddas ned i minnet upp till 120 sekunder. **Spara video direkt till fil**
+WebM och MP4 kan laddas ned i minnet upp till 120 sekunder. **Spara video direkt till fil**
 använder File System Access i Chrome/Edge och en sökbar StreamTarget. Utdata skrivs
 successivt med 1 MiB muxerchunkar och dränerade köer; ljud och bild kodas
 interfolierat. En avbruten/felaktig direktlagring anropar `abort()` på filströmmen.
@@ -60,7 +64,7 @@ Original läses fortfarande från Blob-delar. Testet avkodar en 121-sekunders
 export via en verklig OPFS-filström; en full 30-minuters kvalitets- och
 minnesprofil är fortfarande framtida validering.
 
-## Verktygsrad och framkallning i 0.3
+## Verktygsrad och framkallning
 
 Menyer och verktygsrad anropar samma kommandon som panelerna. Penselns hårdhet,
 opacitet, flöde och tryckinställning skickas till PhotoCraft BrushSettings.
@@ -79,3 +83,12 @@ fångar sitt tidsmål vid geststart; kurvan skickar en operation vid avslutat dr
 Canvaszoom och handverktygets panorering är presentation och påverkar varken
 projektpixlar, exportupplösning eller innehållshistorik. Zoom förstorar ännu
 preview-bufferten, inte en ny fullupplöst renderingsregion.
+
+**Alla verktyg (Ctrl/Cmd+K)** söker originalens kommandoregister och bygger
+parameterformulär från deras specifikationer. **Fler canvasverktyg** ansluter
+lasso, trollstav, retusch/kloning, gradient/fill, former, lokala justeringsmasker,
+spot removal och beskärning till samma canvas. Lokala masker har separata
+reglage för exponering, vitbalans, ljus, färg och detalj. Originalens PSD/pcraft-
+lager visas som redigerbara objekt. Scope visas vid canvasen och i
+kommandodialogen. Desktop-/enhets-/modellfunktioner markeras; full dialog- och
+desktopparitet är inte färdig.

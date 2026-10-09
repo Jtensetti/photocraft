@@ -5,7 +5,7 @@ export function createDevelopUI({getState,command,editScope,status}){
   function build(){
     if(ready)return;ready=true;const groups=new Map();
     const legacy=new Set(['light.exposure','light.contrast','light.highlights','light.shadows','color.saturation','wb.temp','wb.tint']);
-    const titles={light:'Ljus',color:'Färg',curve:'Parametrisk kurva',mixer:'Färgmixer · HSL',bwMix:'Svartvit färgmix',grading:'Färggradering',effects:'Effekter',vignette:'Vinjettering',grain:'Korn',detail:'Detalj',calibration:'Kalibrering'};
+    const titles={light:'Ljus',color:'Färg',curve:'Parametrisk kurva',mixer:'Färgmixer · HSL',bwMix:'Svartvit färgmix',grading:'Färggradering',effects:'Effekter',vignette:'Vinjettering',grain:'Korn',detail:'Detalj',calibration:'Kalibrering',optics:'Optik',geometry:'Geometri och perspektiv',profile:'Profil'};
     for(const spec of getState().develop_controls){
       if(legacy.has(spec.id))continue;
       const key=spec.section;let parent;
@@ -23,7 +23,7 @@ export function createDevelopUI({getState,command,editScope,status}){
   }
   function look(){const s=getState();return s.project.workspace.scope==='project'?s.project.project_look:s.look||{};}
   const graph=$('tone-curve'),cx=graph.getContext('2d'),hist=$('histogram'),hx=hist.getContext('2d');
-  function sync(){build();const values=look();for(const [id,{range,number,spec}] of fields){if(document.activeElement===range||document.activeElement===number)continue;range.value=values[id]??spec.default;number.value=Number(range.value).toFixed(spec.decimals);}if(!drag){curvePoints=structuredClone(values['curve.'+channel]||[{x:0,y:0},{x:1,y:1}]);drawCurve();}$('develop-bw').classList.toggle('active',values.treatment==='bw');}
+  function sync(){build();const values=look();for(const [id,{range,number,spec}] of fields){if(document.activeElement===range||document.activeElement===number)continue;range.value=values[id]??spec.default;number.value=Number(range.value).toFixed(spec.decimals);}if(!drag){curvePoints=structuredClone(values['curve.'+channel]?.length>=2?values['curve.'+channel]:[{x:0,y:0},{x:1,y:1}]);drawCurve();}$('develop-bw').classList.toggle('active',values.treatment==='bw');}
   function drawCurve(){cx.clearRect(0,0,256,256);cx.fillStyle='#232323';cx.fillRect(0,0,256,256);cx.strokeStyle='#3b3b3b';cx.lineWidth=1;for(let i=1;i<4;i++){cx.beginPath();cx.moveTo(i*64,0);cx.lineTo(i*64,256);cx.moveTo(0,i*64);cx.lineTo(256,i*64);cx.stroke();}cx.strokeStyle='#646464';cx.setLineDash([3,4]);cx.beginPath();cx.moveTo(0,256);cx.lineTo(256,0);cx.stroke();cx.setLineDash([]);cx.strokeStyle=({red:'#dd8888',green:'#84c28e',blue:'#82aef0'})[channel]||'#ddd';cx.lineWidth=1.5;cx.beginPath();curvePoints.forEach((p,i)=>{if(i)cx.lineTo(p.x*256,(1-p.y)*256);else cx.moveTo(p.x*256,(1-p.y)*256);});cx.stroke();for(const p of curvePoints){cx.fillStyle='#333';cx.strokeStyle='#ddd';cx.fillRect(p.x*256-3,(1-p.y)*256-3,6,6);cx.strokeRect(p.x*256-3,(1-p.y)*256-3,6,6);}}
   function xy(event){const r=graph.getBoundingClientRect();return {x:Math.max(0,Math.min(1,(event.clientX-r.left)/r.width)),y:Math.max(0,Math.min(1,1-(event.clientY-r.top)/r.height))};}
   graph.onpointerdown=run(e=>{if(e.button!==0)return;const p=xy(e);curveScope=editScope();let index=curvePoints.findIndex(v=>Math.hypot(p.x-v.x,p.y-v.y)<.055);if(index<0){if(curvePoints.length>=32)return;curvePoints.push(p);curvePoints.sort((a,b)=>a.x-b.x);index=curvePoints.indexOf(p);}drag={index,channel};graph.setPointerCapture(e.pointerId);drawCurve();});

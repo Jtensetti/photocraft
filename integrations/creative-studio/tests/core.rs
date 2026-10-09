@@ -83,6 +83,43 @@ fn lightcraft_pipeline_changes_pixels_only_inside_range() {
     assert_eq!(before, s.render(32, 24, 20, &rgba).unwrap());
     assert_eq!(in_range, s.render(32, 24, 19, &rgba).unwrap());
 }
+
+#[test]
+fn all_workspaces_grade_the_same_painted_canvas_and_share_history() {
+    let mut s = setup();
+    let source = [30, 40, 50, 255].repeat(32 * 24);
+    cmd(&mut s, "seek", json!({"frame":137}));
+    cmd(
+        &mut s,
+        "layer.stroke",
+        json!({"stroke":{"color":[0.35,0.35,0.35,1],"size":0.3,"erase":false,"points":[[0.5,0.5,1]]}}),
+    );
+    let painted = s.render(32, 24, 137, &source).unwrap();
+    let center = (12 * 32 + 16) * 4;
+    let id = cmd(&mut s, "view.set", json!({"mode":"light"}))["active_clip"]["id"].clone();
+    cmd(
+        &mut s,
+        "selection.set",
+        json!({"clip_id":id,"start":100,"end":150}),
+    );
+    cmd(&mut s, "develop.set", json!({"values":{"exposure":1}}));
+    let graded = s.render(32, 24, 137, &source).unwrap();
+    assert!(
+        graded[center] > painted[center] + 20,
+        "LightCraft must grade PhotoCraft pixels"
+    );
+    assert_eq!(s.render(32, 24, 150, &source).unwrap(), source);
+    cmd(&mut s, "view.set", json!({"mode":"film"}));
+    assert_eq!(graded, s.render(32, 24, 137, &source).unwrap());
+    let before = s.save().unwrap();
+    let mut reopened = Studio::new();
+    reopened.open(&before).unwrap();
+    assert_eq!(graded, reopened.render(32, 24, 137, &source).unwrap());
+    cmd(&mut reopened, "undo", json!({}));
+    assert_eq!(painted, reopened.render(32, 24, 137, &source).unwrap());
+    cmd(&mut reopened, "redo", json!({}));
+    assert_eq!(graded, reopened.render(32, 24, 137, &source).unwrap());
+}
 #[test]
 fn split_preserves_scope_and_source_time() {
     let mut s = setup();
@@ -292,6 +329,9 @@ fn older_projects_migrate_defaults_and_invalid_new_commands_are_atomic() {
         .as_object_mut()
         .unwrap()
         .remove("project_look");
+    let inspected: Value = serde_json::from_str(&s.inspect().unwrap()).unwrap();
+    saved["project"]["clips"] = inspected["project"]["clips"].clone();
+    saved["project"].as_object_mut().unwrap().remove("timeline");
     saved["project"]["clips"][0]
         .as_object_mut()
         .unwrap()
@@ -386,7 +426,7 @@ fn upstream_curve_and_color_mixer_render_scoped_pixels_and_reopen() {
     for values in [
         json!({"curve.master":[{"x":0.7,"y":0.5},{"x":0.3,"y":0.4}]}),
         json!({"detail.sharpenAmount":500}),
-        json!({"geometry.rotate":10}),
+        json!({"geometry.rotate":1000}),
         json!({"treatment":"hdr"}),
     ] {
         assert!(

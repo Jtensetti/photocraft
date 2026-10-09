@@ -7,9 +7,14 @@
     clippy::unimplemented
 )]
 
+mod coordinates;
+mod encode;
 mod film;
 pub mod model;
+mod native;
 mod render;
+mod sources;
+mod stream_audio;
 use model::*;
 use serde_json::{Value, json};
 use wasm_bindgen::prelude::*;
@@ -28,6 +33,7 @@ pub struct Studio {
     project: Project,
     undo: Vec<Project>,
     redo: Vec<Project>,
+    video_encoder: Option<encode::Video>,
 }
 impl Default for Studio {
     fn default() -> Self {
@@ -39,10 +45,12 @@ impl Default for Studio {
 impl Studio {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
+        sources::install_error_hook();
         Self {
             project: Project::default(),
             undo: vec![],
             redo: vec![],
+            video_encoder: None,
         }
     }
     pub fn execute(&mut self, command: &str, params: &str) -> Result<String, String> {
@@ -59,6 +67,21 @@ impl Studio {
         out["can_redo"] = json!(!self.redo.is_empty());
         serde_json::to_string(&out).map_err(|e| e.to_string())
     }
+    pub fn encode_video_begin(&mut self) -> Result<Vec<u8>, String> {
+        let encoder = encode::Video::new(&self.project)?;
+        let config = encoder.config();
+        self.video_encoder = Some(encoder);
+        Ok(config)
+    }
+    pub fn encode_video_frame(&mut self, index: u32, pixels: &[u8]) -> Result<Vec<u8>, String> {
+        self.video_encoder
+            .as_mut()
+            .ok_or("Videoexporten har inte startat")?
+            .frame(index, pixels)
+    }
+    pub fn encode_video_end(&mut self) {
+        self.video_encoder = None;
+    }
     pub fn save(&self) -> Result<String, String> {
         serde_json::to_string(&json!({ "format": "creative-studio", "project": self.project, "undo": self.undo, "redo": self.redo }))
             .map_err(|e| e.to_string())
@@ -71,14 +94,18 @@ impl Studio {
         if value["format"] != "creative-studio" {
             return Err("Detta är ingen Creative Studio-fil".into());
         }
-        let project: Project =
+        let mut project: Project =
             serde_json::from_value(value["project"].clone()).map_err(|e| e.to_string())?;
-        let undo: Vec<Project> =
+        let mut undo: Vec<Project> =
             serde_json::from_value(value["undo"].clone()).map_err(|e| e.to_string())?;
-        let redo: Vec<Project> =
+        let mut redo: Vec<Project> =
             serde_json::from_value(value["redo"].clone()).map_err(|e| e.to_string())?;
         if undo.len() + redo.len() > 50 {
             return Err("För stor historik".into());
+        }
+        film::restore(&mut project)?;
+        for old in undo.iter_mut().chain(&mut redo) {
+            film::restore(old)?;
         }
         project.validate()?;
         if project_bytes(&project)? > PROJECT_BYTE_LIMIT {
@@ -93,9 +120,227 @@ impl Studio {
             return Err("Projektets historik är för stor".into());
         }
         self.project = project;
+        sources::clear();
         self.undo = undo;
         self.redo = redo;
         self.inspect()
+    }
+    pub fn execute_film(&mut self, command: &str, params: &str) -> Result<String, String> {
+        if params.len() > 8_000_000 {
+            return Err("Kommandot är för stort".into());
+        }
+        let v: Value = serde_json::from_str(params).map_err(|e| e.to_string())?;
+        let mut p = self.project.clone();
+        let (result, content) = film::execute(&mut p, command, v)?;
+        self.commit_project(p, content)?;
+        let mut out: Value = serde_json::from_str(&self.inspect()?).map_err(|e| e.to_string())?;
+        out["native_result"] = result;
+        out["content_changed"] = json!(content);
+        serde_json::to_string(&out).map_err(|e| e.to_string())
+    }
+    pub fn audio_plan(&self, start: i64, frames: u32) -> Result<String, String> {
+        serde_json::to_string(&film::audio_plan(&self.project, start, frames as usize)?)
+            .map_err(|e| e.to_string())
+    }
+    pub fn mix_audio(
+        &self,
+        start: i64,
+        frames: u32,
+        inputs: &str,
+        samples: &[f32],
+    ) -> Result<Vec<f32>, String> {
+        film::mix_audio(&self.project, start, frames as usize, inputs, samples)
+    }
+    pub fn asset_frame(
+        &self,
+        asset: &str,
+        width: u32,
+        height: u32,
+        seconds: f64,
+    ) -> Result<Vec<u8>, String> {
+        film::asset_frame(&self.project, asset, width, height, seconds, None)
+    }
+    pub fn probe_media(&self, id: &str, name: &str, bytes: u64) -> Result<String, String> {
+        serde_json::to_string(&sources::probe(id, name, bytes)?).map_err(|e| e.to_string())
+    }
+    pub fn forget_media(&self, id: &str) {
+        sources::forget(id);
+    }
+    pub fn decode_media_frame(
+        &self,
+        id: &str,
+        seconds: f64,
+        scale: f32,
+    ) -> Result<Vec<u8>, String> {
+        let a = self
+            .project
+            .assets
+            .iter()
+            .find(|a| a.id == id)
+            .ok_or("Källan saknas")?;
+        sources::frame(a, seconds, scale)
+    }
+    pub fn decode_media_audio(
+        &self,
+        id: &str,
+        start: i64,
+        frames: u32,
+        rate: u32,
+    ) -> Result<Vec<f32>, String> {
+        let a = self
+            .project
+            .assets
+            .iter()
+            .find(|a| a.id == id)
+            .ok_or("Ljudkällan saknas")?;
+        sources::audio(a, start, frames as usize, rate)
+    }
+    pub fn asset_clip_frame(
+        &self,
+        asset: &str,
+        clip: &str,
+        width: u32,
+        height: u32,
+        seconds: f64,
+    ) -> Result<Vec<u8>, String> {
+        film::asset_frame(&self.project, asset, width, height, seconds, Some(clip))
+    }
+    pub fn frame_plan(&self, frame: u32) -> Result<String, String> {
+        serde_json::to_string(&film::frame_plan(&self.project, frame)?).map_err(|e| e.to_string())
+    }
+    pub fn clip_plan(&self, id: &str, frame: u32) -> Result<String, String> {
+        serde_json::to_string(&film::clip_plan(&self.project, id, frame)?)
+            .map_err(|e| e.to_string())
+    }
+    pub fn render_sequence(
+        &self,
+        width: u32,
+        height: u32,
+        frame: u32,
+        inputs: &str,
+        pixels: &[u8],
+    ) -> Result<Vec<u8>, String> {
+        film::render(&self.project, width, height, frame, inputs, pixels)
+    }
+    pub fn canvas_coordinates(
+        &self,
+        kind: &str,
+        points: &str,
+        doc_width: u32,
+        doc_height: u32,
+    ) -> Result<String, String> {
+        if points.len() > 2_000_000 || !["photo", "light", "source", "canvas"].contains(&kind) {
+            return Err("Ogiltiga canvaskoordinater".into());
+        }
+        let points: Vec<[f64; 2]> = serde_json::from_str(points).map_err(|e| e.to_string())?;
+        if points.len() > 20_000
+            || points
+                .iter()
+                .flatten()
+                .any(|v| !v.is_finite() || v.abs() > 16.0)
+        {
+            return Err("För många eller ogiltiga canvaskoordinater".into());
+        }
+        let mapping = coordinates::Mapping::new(&self.project, self.project.workspace.playhead)?;
+        let result = points
+            .into_iter()
+            .map(|p| {
+                if kind == "canvas" {
+                    Ok(mapping.to_canvas(
+                        [
+                            p[0] * f64::from(self.project.width),
+                            p[1] * f64::from(self.project.height),
+                        ],
+                        (self.project.width, self.project.height),
+                    ))
+                } else {
+                    mapping.to_source(p, kind, (doc_width, doc_height))
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        serde_json::to_string(&result).map_err(|e| e.to_string())
+    }
+    pub fn render_clip_sequence(
+        &self,
+        clip: &str,
+        width: u32,
+        height: u32,
+        frame: u32,
+        inputs: &str,
+        pixels: &[u8],
+    ) -> Result<Vec<u8>, String> {
+        film::render_clip(&self.project, clip, width, height, frame, inputs, pixels)
+    }
+    pub fn native_catalog(&self) -> Result<String, String> {
+        serde_json::to_string(&native::catalog()).map_err(|e| e.to_string())
+    }
+    pub fn native_view(
+        &self,
+        width: u32,
+        height: u32,
+        frame: u32,
+        rgba: &[u8],
+    ) -> Result<String, String> {
+        serde_json::to_string(&native::photo_view(
+            &self.project,
+            width,
+            height,
+            frame,
+            rgba,
+        )?)
+        .map_err(|e| e.to_string())
+    }
+    #[allow(clippy::too_many_arguments)] // A single decoded frame crosses the WASM ABI.
+    pub fn execute_pixels(
+        &mut self,
+        engine: &str,
+        command: &str,
+        params: &str,
+        width: u32,
+        height: u32,
+        frame: u32,
+        rgba: &[u8],
+    ) -> Result<String, String> {
+        if params.len() > 8_000_000 {
+            return Err("Kommandot är för stort".into());
+        }
+        if width != self.project.width
+            || height != self.project.height
+            || frame != self.project.workspace.playhead
+        {
+            return Err("Verktyget måste utgå från den aktuella projektcanvasen".into());
+        }
+        let v: Value = serde_json::from_str(params).map_err(|e| e.to_string())?;
+        let mut p = self.project.clone();
+        let scope = if v["scope"] == "project"
+            || (v.get("scope").is_none() && p.workspace.scope == "project")
+        {
+            None
+        } else {
+            Some(target_scope(&p, &v)?)
+        };
+        let params = v.get("params").cloned().unwrap_or_else(|| json!({}));
+        let (result, content) = match engine {
+            "photo" => native::photo(
+                &mut p,
+                command,
+                params,
+                scope.ok_or(
+                    "Det här bildverktyget behöver en bildruta, ett intervall eller ett klipp",
+                )?,
+                width,
+                height,
+                frame,
+                rgba,
+            )?,
+            "light" => native::light(&mut p, command, &params, scope, width, height, frame, rgba)?,
+            _ => return Err("Okänd verktygsmotor".into()),
+        };
+        self.commit_project(p, content)?;
+        let mut out: Value = serde_json::from_str(&self.inspect()?).map_err(|e| e.to_string())?;
+        out["native_result"] = result;
+        out["content_changed"] = json!(content);
+        serde_json::to_string(&out).map_err(|e| e.to_string())
     }
     /// Called in a worker. The pixels are one decoded frame, never a video file.
     pub fn render(
@@ -106,6 +351,21 @@ impl Studio {
         rgba: &[u8],
     ) -> Result<Vec<u8>, String> {
         render::frame(&self.project, width, height, global_frame, rgba)
+    }
+    pub fn render_target(
+        &self,
+        clip: &str,
+        width: u32,
+        height: u32,
+        global_frame: u32,
+        rgba: &[u8],
+    ) -> Result<Vec<u8>, String> {
+        let mut view = self.project.clone();
+        view.workspace.active_clip_id = Some(clip.into());
+        if view.at(global_frame).is_none_or(|(c, _)| c.id != clip) {
+            return Err("Bildrutan ligger utanför det valda klippet".into());
+        }
+        render::frame(&view, width, height, global_frame, rgba)
     }
 }
 impl Studio {
@@ -158,16 +418,27 @@ impl Studio {
                     asset.id = p.id("asset");
                 }
                 let id = p.id("clip");
-                p.workspace.playhead = p.frames();
-                p.clips.push(Clip {
-                    id,
-                    asset_id: asset.id.clone(),
-                    frames,
-                    source_in: 0,
-                    muted: false,
-                    volume: 1.0,
-                });
-                p.assets.push(asset);
+                if asset.kind == "audio" {
+                    p.assets.push(asset);
+                    film::add_audio(&mut p, &id, frames)?;
+                } else {
+                    p.workspace.playhead = p.frames();
+                    p.workspace.active_clip_id = Some(id.clone());
+                    p.workspace.native_target = None;
+                    p.clips.push(Clip {
+                        id,
+                        asset_id: asset.id.clone(),
+                        frames,
+                        source_in: 0,
+                        muted: false,
+                        volume: 1.0,
+                        start: p.workspace.playhead,
+                        track: film::video_track(),
+                        speed: 1.0,
+                        reverse: false,
+                    });
+                    p.assets.push(asset);
+                }
                 p.workspace.selected_layer = None;
                 p.workspace.selection = None;
             }
@@ -192,13 +463,32 @@ impl Studio {
                     p.workspace.timeline_height = h.clamp(120, 480) as u32;
                 }
                 if let Some(r) = v.get("pixel_selection") {
+                    p.workspace.photo_selection.clear();
                     p.workspace.pixel_selection =
                         serde_json::from_value(r.clone()).map_err(|e| e.to_string())?;
                 }
                 if v.get("selected_layer").is_some_and(Value::is_null) {
                     p.workspace.selected_layer = None;
                 }
+                if let Some(n) = v.get("active_clip_id") {
+                    p.workspace.active_clip_id =
+                        serde_json::from_value(n.clone()).map_err(|e| e.to_string())?;
+                    if let Some(id) = p
+                        .workspace
+                        .active_clip_id
+                        .as_ref()
+                        .and_then(|id| id.strip_prefix("clip-"))
+                        .and_then(|id| id.parse::<u64>().ok())
+                    {
+                        p.workspace.film_state.selection = vec![filmcraft_project::ClipId(id)];
+                    }
+                }
+                if let Some(n) = v.get("native_target") {
+                    p.workspace.native_target =
+                        serde_json::from_value(n.clone()).map_err(|e| e.to_string())?;
+                }
                 if let Some(id) = v["selected_layer"].as_str() {
+                    p.workspace.native_target = None;
                     p.workspace.selected_layer = Some(id.into());
                 }
             }
@@ -391,6 +681,7 @@ impl Studio {
             "layer.delete" => {
                 let id = string(v, "id")?;
                 p.layers.retain(|l| l.id != id);
+                native::remove_target(&mut p, id);
                 p.workspace.selected_layer = None;
             }
             "layer.scope" => {
@@ -410,9 +701,16 @@ impl Studio {
                     .iter_mut()
                     .find(|c| c.id == id)
                     .ok_or("Klippet finns inte")?;
-                clip.volume = v["volume"].as_f64().ok_or("Ogiltig volym")?;
+                let volume = v["volume"]
+                    .as_f64()
+                    .filter(|n| n.is_finite() && (0.0..=1.0).contains(n))
+                    .ok_or("Ogiltig volym")?;
+                clip.volume = volume;
             }
             "clip.move" => {
+                if !film::is_contiguous(&p) {
+                    return Err("Flytta klippet direkt på tidslinjen när projektet har flera spår eller mellanrum".into());
+                }
                 let id = string(v, "id")?;
                 let target = integer(v, "index")? as usize;
                 if target >= p.clips.len() {
@@ -457,23 +755,30 @@ impl Studio {
                 p.adjustments.retain(|l| {
                     l.scope.clip_id != id || l.scope.start < end && l.scope.end > start
                 });
+                p.photo_operations.retain(|l| {
+                    l.scope.clip_id != id || l.scope.start < end && l.scope.end > start
+                });
                 for scope in p
                     .layers
                     .iter_mut()
                     .map(|l| &mut l.scope)
                     .chain(p.adjustments.iter_mut().map(|l| &mut l.scope))
+                    .chain(p.photo_operations.iter_mut().map(|l| &mut l.scope))
                 {
                     if scope.clip_id == id {
                         scope.start = scope.start.max(start) - start;
                         scope.end = scope.end.min(end) - start;
                     }
                 }
-                let offset: u32 = p
-                    .clips
-                    .iter()
-                    .take_while(|c| c.id != id)
-                    .map(|c| c.frames)
-                    .sum();
+                let offset = if film::is_contiguous(&p) {
+                    p.clips
+                        .iter()
+                        .take_while(|c| c.id != id)
+                        .map(|c| c.frames)
+                        .sum()
+                } else {
+                    p.clips.iter().find(|c| c.id == id).map_or(0, |c| c.start)
+                };
                 p.workspace.playhead = offset;
                 p.workspace.selection = None;
                 if !p
@@ -516,11 +821,14 @@ impl Studio {
                     .retain(|l| l.scope.clip_id != id || l.scope.start < frames);
                 p.adjustments
                     .retain(|l| l.scope.clip_id != id || l.scope.start < frames);
+                p.photo_operations
+                    .retain(|l| l.scope.clip_id != id || l.scope.start < frames);
                 for s in p
                     .layers
                     .iter_mut()
                     .map(|l| &mut l.scope)
                     .chain(p.adjustments.iter_mut().map(|l| &mut l.scope))
+                    .chain(p.photo_operations.iter_mut().map(|l| &mut l.scope))
                 {
                     if s.clip_id == id {
                         s.end = s.end.min(frames);
@@ -534,50 +842,20 @@ impl Studio {
                 if local == 0 {
                     return Err("Flytta till en bildruta inne i klippet först".into());
                 }
-                let old = c.id.clone();
-                let new = p.id("clip");
-                let index = p
-                    .clips
-                    .iter()
-                    .position(|c| c.id == old)
-                    .ok_or("Klippet saknas")?;
-                let c = p.clips.get_mut(index).ok_or("Klippet saknas")?;
-                let mut right = c.clone();
-                right.id = new.clone();
-                right.frames -= local;
-                right.source_in += local;
-                c.frames = local;
-                p.clips.insert(index + 1, right);
-                let mut new_layers = vec![];
-                for l in &mut p.layers {
-                    if l.scope.clip_id == old && l.scope.end > local {
-                        let mut r = l.clone();
-                        r.id = format!("{}-{}", l.id, new);
-                        r.scope.clip_id = new.clone();
-                        r.scope.start = r.scope.start.saturating_sub(local);
-                        r.scope.end -= local;
-                        new_layers.push(r);
-                        l.scope.end = l.scope.end.min(local);
-                    }
-                }
-                p.layers.retain(|l| l.scope.start < l.scope.end);
-                p.layers.extend(new_layers);
-                let mut new_edits = vec![];
-                for e in &mut p.adjustments {
-                    if e.scope.clip_id == old && e.scope.end > local {
-                        let mut r = e.clone();
-                        r.scope.clip_id = new.clone();
-                        r.scope.start = r.scope.start.saturating_sub(local);
-                        r.scope.end -= local;
-                        new_edits.push(r);
-                        e.scope.end = e.scope.end.min(local);
-                    }
-                }
-                p.adjustments.retain(|e| e.scope.start < e.scope.end);
-                p.adjustments.extend(new_edits);
+                let id =
+                    c.id.strip_prefix("clip-")
+                        .and_then(|s| s.parse::<u64>().ok())
+                        .ok_or("Klippet saknas")?;
+                let time = p.fps.tick_of(i64::from(p.workspace.playhead));
+                film::execute(&mut p, "timeline.razor", json!({"clip":id,"time":time}))?;
                 p.workspace.selection = None;
             }
             _ => return Err(format!("Kommandot stöds inte: {cmd}")),
+        }
+        if cmd == "project.new" {
+            p.timeline = Some(film::empty_sequence(p.width, p.height, p.fps));
+        } else if cmd == "asset.add" || cmd.starts_with("clip.") && cmd != "clip.split" {
+            film::sync_timeline(&mut p, cmd)?;
         }
         p.validate()?;
         if content && project_bytes(&p)? > PROJECT_BYTE_LIMIT {
@@ -602,6 +880,22 @@ impl Studio {
         Ok(())
     }
 
+    fn commit_project(&mut self, p: Project, content: bool) -> Result<(), String> {
+        p.validate()?;
+        if project_bytes(&p)? > PROJECT_BYTE_LIMIT {
+            return Err("Projektets redigeringar är för stora".into());
+        }
+        if content {
+            self.undo.push(self.project.clone());
+            self.redo.clear();
+            if self.undo.len() > 30 {
+                self.undo.remove(0);
+            }
+        }
+        self.project = p;
+        self.trim_history()?;
+        Ok(())
+    }
     fn repair_view(&mut self) {
         let p = &mut self.project;
         p.workspace.playhead = p.workspace.playhead.min(p.frames().saturating_sub(1));

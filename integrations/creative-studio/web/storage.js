@@ -23,7 +23,7 @@ export async function backup(json) {
   const blobs = [];
   for (const a of p.assets) {
     const blob = await getMedia(a.id);
-    if (!blob && a.kind !== 'blank') throw new Error(`Originalet ${a.name} saknas. Återlänka innan säkerhetskopiering.`);
+    if (!blob && !['blank','generator'].includes(a.kind)) throw new Error(`Originalet ${a.name} saknas. Återlänka innan säkerhetskopiering.`);
     if (blob) blobs.push({id:a.id,blob});
   }
   const header = new TextEncoder().encode(JSON.stringify({json,media:blobs.map(({id,blob})=>({id,size:blob.size,type:blob.type}))}));

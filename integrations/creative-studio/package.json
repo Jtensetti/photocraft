@@ -11,9 +11,11 @@
     "test:browser": "node tests/browser.mjs",
     "test:production": "node tests/production.mjs",
     "test:workspace": "node tests/workspace.mjs",
-    "test:pro": "node tests/pro.mjs"
+    "test:pro": "node tests/pro.mjs",
+    "test:native": "node tests/native-browser.mjs"
   },
   "dependencies": {
+    "mp4-muxer": "5.2.2",
     "mp4box": "2.1.2",
     "webm-muxer": "5.1.4"
   },

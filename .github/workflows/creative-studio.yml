@@ -11,7 +11,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: integrations/creative-studio
@@ -34,7 +34,7 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
-      - run: cargo install wasm-bindgen-cli --version 0.2.105 --locked
+      - run: cargo install wasm-bindgen-cli --version 0.2.129 --locked
       - run: npm run build:wasm
       - run: python3 scripts/license-notices.py
       - run: npx playwright install --with-deps chromium
@@ -42,6 +42,7 @@ jobs:
       - run: npm run test:browser
       - run: npm run test:workspace
       - run: npm run test:pro
+      - run: npm run test:native
       - run: npm run build
       - run: npm run test:production
       - uses: actions/upload-artifact@v4

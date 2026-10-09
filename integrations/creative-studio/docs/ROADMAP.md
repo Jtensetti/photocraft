@@ -1,69 +1,34 @@
-# Faktisk funktionsstatus och fortsättning
+# Verifierad funktion och kvarvarande gränser
 
-## Levererat i 0.3
+## Version 0.4
 
-| Område | Funktion |
+| Område | Implementerat |
 |---|---|
-| Projekt | En Rust Studio, canvas, tidsstruktur, historik, save/open och backup |
-| Filmrulle | Riktiga tidsbaserade miniatyrer, bildrutezoom, klick, Shift-intervall, dragmarkering och I/O |
-| Scope | Bildruta, klippintervall, klipp och fotografisk projektjustering; gestens mål fångas uttryckligen |
-| Utformning | Tät charcoal-arbetsyta med originalens Pro-mönster, Lucide-verktygsrad, fungerande menyer, kontextinställningar, dokumentflik, zoom och handverktyg |
-| Arbetsyta | Flyttbara dockor, flikar/stapling, minimering, frikopplade paneler, bredder, höjd och namngivna layouter |
-| PhotoCraft | Faktisk paint/compose/text, penselhårdhet/opacitet/flöde/tryck, sudd, rektangulär bildmarkering/lagermask, 27 blandningslägen, X/Y, centrerad skala/rotation, duplicering/ordning och tidsomfattning |
-| LightCraft | Faktisk pipeline, RGB-punktkurvor, 92 numeriska UI-reglage för ljus/färg/HSL/svartvit mix/gradering/effekter/vinjett/korn/detalj/kalibrering, histogram och gemensamma icke-destruktiva justeringsoperationer |
-| FilmCraft | Faktisk time/project/edit-adapter för trimning; split, omordning, stillbildslängd, mute och klippvolym |
-| Spårvy | Sekventiella klipp, originalljud och separata tidsband för pensel-/textlager med ändhandtag |
-| Export | Bearbetad PNG, exakt VP9/Opus WebM, interfolierad kodning, avbrott och direktlagring för längre sekvenser |
-| Lagring | IndexedDB, portabel backup, relink, automatisk återställningspunkt och atomisk backup-medieåterställning |
-| Historia | Undo/redo bevarar arbetsytan och reparerar ogiltig markering/lagerval efter tidsändringar |
+| Gemensamt projekt | En Rust Studio, auktoritativ FilmCraft-sekvens, tidsmedvetna operationer, canvas och gemensam historik |
+| Filmrulle | Verkliga tidsminiatyrer, zoom till bildrutor, klick, Shift-intervall, dragmarkering, I/O och klipp-/lagerband |
+| Arbetsyta | Flyttbara paneler, dockor, flikar/stapling, frikoppling, minimering, dimensioner och namngivna layouter |
+| Verktyg | Originalens verkliga kommandoregister, sökning/kategorier/parameterformulär och tydliga plattformsbegränsningar |
+| PhotoCraft | Native dokument/lager, filter, lasso/trollstav, retusch, kloning/lagning, gradient/fill, former/vektorer, masker, fria transformationer, stilar, kanaler, urklipp och penselförinställningar |
+| LightCraft | Full pipeline, kurvor/HSL/gradering/detalj, lokala masker med alla justeringar, brush/linear/radial, spot removal, beskärning/geometri, auto och förinställningar |
+| FilmCraft | Full native renderare, flera spår, dragflytt/trim/razor, ripple/slip/slide, speed/reverse, övergångar, effektparametrar/keyframes, native grafik och nästlade sekvenser |
+| Ljud | Flera ljudspår, gain/mute/effekter, faktisk native DSP-mix, resampling, fristående WAV/MP3/FLAC/AIFF och stödda containerljud |
+| Original | Browserformat samt PhotoCrafts pcraft/PSD/PSB/TIFF/RAW-import och FilmCrafts range-/GOP-avkodare; inga fysiska videobildrutefiler |
+| Export | Samma renderade canvas i PNG, WebM och MP4; strömmande H.264-fallback från FilmCraft; avbrott och direktfil för längre export |
+| Spara | IndexedDB, portabel backup med original, relink, automatisk återställningspunkt, atomisk validering och gemensam undo/redo |
 
-20 Rust-tester kontrollerar verkliga pixlar, scope, text, mask, kurvor/HSL,
-blandningslägen, transformering, parameteralias, trimning, omordning, atomiska
-fel, äldre standardfält och historikbudget. Webbläsartester avkodar
-exporter med ffmpeg och kontrollerar video, ljud, intervall samt en 121-sekunders
-OPFS-export. Se tests och [arbetsytans kontrakt](WORKSPACE.md).
+Inventeringen omfattar 833 PhotoCraft-, 264 LightCraft- och 675 FilmCraft-kommandospecifikationer. Antalet inkluderar desktopfunktioner och administrativa kommandon. Det är inte ett påstående om att 1 772 funktioner har full browserparitet eller har testats individuellt.
 
-0.3 bygger vidare på samma sparformat och bakåtkompatibla standardfält. Den
-exponerar ett större urval av de befintliga motorerna; menyerna listar anslutna
-operationer. Detta är fortfarande inte full Photoshop/Lightroom/Premiere-paritet.
+Rust-tester kontrollerar faktiska pixlar, scope, masker, urklipp, kurvor, transformationskoordinater, spår, övergångar, nästling, speed/reverse, audio-DSP, atomiska fel och historikbudget. Playwright verifierar UI, sparning/återöppning, lageroriginal, specialformat, ljud och avkodade exporter. En separat 121-sekunders OPFS-export kontrollerar strömning och avbrott. Produktionsbygget testas från en undermapp.
 
-## Kvarvarande gränser
+## Gränser som ännu finns
 
-- En sekventiell mediekanal. Lagerbanden är riktiga overlay-spår, men oberoende
-  video-/ljudspår, mixning, övergångar och den fullständiga FilmCraft-renderaren
-  återstår. Spårvyn utger sig inte för att ha dessa funktioner.
-- CFR-MP4 med samma projekt-fps. VP9/Opus är avkodningstestat; H.264/AAC måste
-  verifieras i vanlig Chrome/Edge. VFR, separata ljudfiler, 44.1 kHz resampling,
-  komplexa MP4-edit-listor och fler exportcontainrar återstår.
-- Direktlagring är testad över den tidigare tvåminutersgränsen vid liten upplösning.
-  En 30-minuters export i hög upplösning behöver separat minnes-/prestandaprofil.
-  MP4-indexet och WebCodecs interna codec-buffertar har fortfarande egna kostnader.
-- Mask och bildmarkering är rektangulära och ligger i canvasens koordinater;
-  de följer ännu inte med när lagret transformeras. Skala är likformig kring
-  canvascentrum; fri perspektivtransform, lasso, penselmask och lokala
-  LightCraft-masker återstår.
-- Text använder en bundlad font och begränsad enkel stil. Typografiska
-  run-stilar, fontval och objektbaserade transformhandtag återstår.
-- Canvas in/ut är 8-bitars sRGB. HDR, ICC/RAW/16-bitars trohet, GPU-rendering,
-  keyframes och tracking återstår.
-- Automatisk återställningspunkt ersätter inte en portabel backup. En arbetare
-  som kraschar måste fortfarande laddas om; strukturellt delad historik,
-  innehållshash vid relink och fullständigt migrationsregister återstår.
-- Intervall sträcker sig inom ett klipp. Flerval av åtskilda rutor eller över flera
-  klipp kräver ett scope-set i nästa projektversion.
+- Desktopfiler, hårdvaruenheter, plugins, modellnedladdning och AI-modeller är inte webbanpassade. Kommandon som kräver dem markeras eller ger ett konkret adapterfel. Ingen extern AI-/konto-/betalningstjänst ingår.
+- Canvasen har 8-bitars sRGB in/ut. RAW kan importeras av originalmotorn, men HDR, ICC och 16-bitars trohet bevaras ännu inte genom hela kedjan.
+- UI visar native filter och många avancerade funktioner i originalens parameterformulär. Interaktiva transformhandtag, avancerade biblioteksvyer och full meny-/dialogparitet med desktoporiginalen behöver fortsatt utformning.
+- Intervallet gäller ett klipp. Åtskilda rutor och flerval över klipp kräver ett scope-set. Verktyg som behöver ett större mållager ger fel om dess tidsomfattning inte täcker valet.
+- Tillgängligt codec-stöd och vissa komplexa container-/edit-listor varierar. De automatiserade formatkontrollerna täcker konkreta fixtures och garanterar inte varje kameraformat eller skadad fil.
+- Lång export är verifierad vid liten upplösning. En halvtimmes 4K-export och stora lagerprojekt behöver separat minnes-/prestandaprofil. Originalavkodare, originalens cache och codec-index har egna kostnader.
+- Native operationer måste kunna spelas upp på sitt mål; vissa verktyg för externa presets, flera dokument eller separata bibliotek behöver en ytterligare browseradapter. Full desktopparitet är inte färdig.
+- Media är lokal per origin. Portabel backup behövs för flytt mellan domäner/enheter. Filhash vid relink, automatisk återstart av en kraschad worker och ett fullständigt migrationsregister återstår.
 
-## Nästa accepterbara steg
-
-1. Härled FilmCrafts flerspårssekvens och SourceProvider från samma projekt;
-   migrera scopes mot källtid innan oberoende klippplacering/övergångar införs.
-   Avkoda exporten och verifiera överlapp, ljudplacering och alla intervallgränser.
-2. Exakt sample-indexerad VideoDecoder/VFR-adapter och fler format. Verifiera
-   23.976/29.97, H.264/AAC, resampling och 30 min under explicit minnesbudget.
-3. Anslut PhotoCrafts fria transform/vector-mask och LightCrafts lokala masker.
-   Koppla lager och masker till samma transform; lägg till objektets egna
-   transformhandtag och färgreferenser för preview/export.
-4. Journal och worker-återstart, innehållshash, schema-migreringar och kvottester.
-
-Ett eget `Jtensetti/creative-studio`-repository kan inte skapas genom GitHub-
-anslutningen i denna session. Mappen är självständig med egen Cargo-workspace och
-CI; publiceringskällan och webbdemon är separata från PhotoCrafts desktopapp.
+Nästa arbete är därför browseranpassning och UX för de återstående originalfunktionerna, färgtrohet och storprojektsprofilering. Den gemensamma modellen och originalmotorerna ska fortsatt vara grunden.

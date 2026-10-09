@@ -1,6 +1,8 @@
 import './style.css';
 import {icon} from './icons.js';
 import {createDevelopUI} from './develop-ui.js';
+import {createAudioMixer} from './audio-mixer.js';
+import {createNativeUI} from './native-ui.js';
 import {createProUI} from './pro-ui.js';
 import {createWorkspace} from './layout.js';
 import {createFilmstrip} from './filmstrip.js';
@@ -11,9 +13,11 @@ import {metadata,source,seek,pauseAll,clearSources,event} from './media.js';
 const $=id=>document.getElementById(id);
 const worker=new Worker(new URL('./worker.js',import.meta.url),{type:'module'});
 const pending=new Map();let serial=0,state,dirty=false,busy=false,playing=false,playToken=0,exporting=false,cancelExport=false,tool='brush',renderToken=0,rendering=false,rerender=false;
-let workspace,filmstrip,developUI,proUI,recoveryTimer,recovery,canvasGesture;
+let workspace,filmstrip,developUI,proUI,nativeUI,audioMixer,recoveryTimer,recovery,canvasGesture;
 let projectId=crypto.randomUUID(); const thumbs=new Map();
-worker.onmessage=({data:m})=>{const p=pending.get(m.id);if(!p)return;pending.delete(m.id);clearTimeout(p.timer);m.error?p.reject(new Error(m.error)):p.resolve(m.result);};
+const attachedSources=new Set(),sourceReads=new Map();
+async function attachSource(asset,blob){if(attachedSources.has(asset.id)||!asset.bytes)return;blob??=await getMedia(asset.id);if(!blob)throw new Error('Originalet saknas: '+asset.name);await rpc('attach-media',{asset:asset.id,blob});attachedSources.add(asset.id);}
+worker.onmessage=({data:m})=>{if(m.loading!=null){status('Laddar redigeringsmotorer · '+m.loading+' %');return;}const p=pending.get(m.id);if(!p)return;pending.delete(m.id);clearTimeout(p.timer);m.error?p.reject(new Error(m.error)):p.resolve(m.result);};
 worker.onerror=()=>{for(const p of pending.values()){clearTimeout(p.timer);p.reject(new Error('Redigeringsmotorn stannade. Ladda om och öppna senast sparade projekt.'));}pending.clear();status('Redigeringsmotorn kunde inte köras',true);};
 function rpc(op,params={},transfer=[]) {return new Promise((resolve,reject)=>{const id=++serial;const timer=setTimeout(()=>{pending.delete(id);reject(new Error('Redigeringsmotorn svarar inte'));},60000);pending.set(id,{resolve,reject,timer});worker.postMessage({id,op,...params},transfer);});}
 function status(text,error=false){$('status').textContent=text;$('status').classList.toggle('error',error);}
@@ -60,7 +64,7 @@ function update(){
   $('duration').disabled=a?.kind==='video';$('duration').value=c?(c.frames/fps()).toFixed(2):1;
   $('project-details').textContent=`${p.width} × ${p.height} · ${(state.total_frames/fps()).toFixed(2)} s · ${p.clips.length} klipp`;
   for(const id of Object.keys(controls)){const n=(w.scope==='project'?p.project_look?.[id]:state.look?.[id])??0;$(id).value=n;$('value-'+id).textContent=id==='exposure'?n.toFixed(2):String(n);}
-  renderAssets();renderLayers();filmstrip?.refresh();developUI?.sync();proUI?.sync();
+  renderAssets();renderLayers();filmstrip?.refresh();developUI?.sync();proUI?.sync();nativeUI?.sync();
 }
 const controls={exposure:['Exponering',-5,5,.05,'light-controls'],contrast:['Kontrast',-100,100,1,'light-controls'],highlights:['Högdagrar',-100,100,1,'light-controls'],shadows:['Skuggor',-100,100,1,'light-controls'],temperature:['Temperatur',-100,100,1,'color-controls'],tint:['Nyans',-100,100,1,'color-controls'],saturation:['Mättnad',-100,100,1,'color-controls']};
 for(const [id,[label,min,max,step,parent]] of Object.entries(controls)){
@@ -73,8 +77,8 @@ function renderAssets(){
   for(const a of state.project.assets){
     const b=document.createElement('button');b.className='asset'+(state.active_clip?.asset_id===a.id?' active':'');
     const img=document.createElement('img');img.className='asset-thumb';img.alt='';if(thumbs.has(a.id))img.src=thumbs.get(a.id);
-    const text=document.createElement('div');const name=document.createElement('div');name.className='asset-name';name.textContent=a.name;const meta=document.createElement('div');meta.className='asset-meta';meta.textContent=`${a.kind==='video'?'Video':'Bild'} · ${a.width}×${a.height}`;text.append(name,meta);b.append(img,text);
-    b.onclick=handle(async()=>{await stop();if(a.kind!=='blank'&&!await getMedia(a.id)){await relink(a);return;}let offset=0;for(const c of state.project.clips){if(c.asset_id===a.id){await command('seek',{frame:offset});break;}offset+=c.frames;}});root.append(b);
+    const text=document.createElement('div');const name=document.createElement('div');name.className='asset-name';name.textContent=a.name;const meta=document.createElement('div');meta.className='asset-meta';meta.textContent=`${a.kind==='video'?'Video':a.kind==='audio'?'Ljud':a.kind==='generator'?'Generator':'Bild'} · ${a.width}×${a.height}`;text.append(name,meta);b.append(img,text);
+    b.onclick=handle(async()=>{await stop();if(!['blank','generator'].includes(a.kind)&&!await getMedia(a.id)){await relink(a);return;}const c=state.project.clips.find(c=>c.asset_id===a.id);if(c){await command('view.set',{active_clip_id:c.id},false);await command('seek',{frame:c.start});}});root.append(b);
   }
 }
 function renderLayers(){
@@ -99,17 +103,48 @@ function renderLayers(){
   const asset=state.project.assets.find(a=>a.id===state.active_clip?.asset_id);if(asset){const base=document.createElement('div');base.className='base-layer';const img=document.createElement('img');img.alt='';if(thumbs.has(asset.id))img.src=thumbs.get(asset.id);const name=document.createElement('span');name.textContent='Original';const label=document.createElement('small');label.textContent='Källa';base.append(img,name,label);root.append(base);}
 }
 const raw=document.createElement('canvas'),rawCtx=raw.getContext('2d',{willReadFrequently:true}),ctx=$('canvas').getContext('2d'),overlay=$('stroke-preview').getContext('2d');
-async function framePixels(frame,width,height,realtime=false){
-  let offset=0,clip,local;for(const c of state.project.clips){if(frame<offset+c.frames){clip=c;local=frame-offset;break;}offset+=c.frames;}
-  if(!clip)throw new Error('Ingen bildruta');
-  const asset=state.project.assets.find(a=>a.id===clip.asset_id),media=await source(asset);
-  if(media instanceof HTMLVideoElement&&!realtime)await seek(media,(clip.source_in+local+.5)/fps());
+async function rawPixels(asset,seconds,width,height,realtime=false,clip){
+  if(asset.kind==='generator'){for(const a of state.project.assets)await attachSource(a);return new Uint8ClampedArray(await rpc('source-frame',{asset:asset.id,clip,width,height,seconds}));}
+  if(['native','photo'].includes(asset.source_decoder)){
+    await attachSource(asset);const packed=await rpc('decode-frame',{asset:asset.id,seconds,scale:Math.min(1,width/asset.width,height/asset.height)}),dv=new DataView(packed),w=dv.getUint32(0,true),h=dv.getUint32(4,true),c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(packed,8),w,h),0,0);const out=document.createElement('canvas');out.width=width;out.height=height;const cx=out.getContext('2d'),ratio=Math.min(width/w,height/h);cx.drawImage(c,(width-w*ratio)/2,(height-h*ratio)/2,w*ratio,h*ratio);return cx.getImageData(0,0,width,height).data;
+  }
+  const previous=sourceReads.get(asset.id)||Promise.resolve();let release;const next=new Promise(r=>release=r);sourceReads.set(asset.id,previous.then(()=>next));await previous;
+  try {
+  const media=await source(asset);
+  if(media instanceof HTMLVideoElement&&!realtime)await seek(media,seconds);
   raw.width=width;raw.height=height;rawCtx.clearRect(0,0,width,height);
   const ratio=Math.min(width/asset.width,height/asset.height),w=asset.width*ratio,h=asset.height*ratio;
   rawCtx.drawImage(media,(width-w)/2,(height-h)/2,w,h);
-  const data=rawCtx.getImageData(0,0,width,height).data;
-  const result=await rpc('render',{width,height,frame,pixels:data.buffer},[data.buffer]);
-  return new Uint8ClampedArray(result);
+  return rawCtx.getImageData(0,0,width,height).data;
+  }finally{release();}
+}
+async function canvasSource(){
+  const p=state.project,c=state.active_clip;if(!c)throw new Error('Välj ett klipp på tidslinjen');
+  const a=p.assets.find(a=>a.id===c.asset_id);
+  const [sample]=await rpc('frame-plan',{frame:p.workspace.playhead,clip:c.id});return rawPixels(a,sample.seconds+.5/(a.source_fps||fps()),p.width,p.height,false,c.id);
+}
+async function nativeCommand(engine,id,params={},scope){
+  if(exporting)throw new Error('Vänta tills exporten är klar');await stop();
+  if(engine==='film'){for(const a of state.project.assets)await attachSource(a);state=await rpc('native-film',{command:id,params});}
+  else{scope??=editScope();const p=state.project,frame=p.workspace.playhead,data=await canvasSource();state=await rpc('native',{engine,command:id,params,scope,width:p.width,height:p.height,frame,pixels:data.buffer},[data.buffer]);}
+  if(state.content_changed){dirty=true;$('save-status').textContent='Osparade ändringar';filmstrip?.invalidate();scheduleRecovery();}
+  update();await paint();await nativeUI?.refreshLayers();return state.native_result;
+}
+let nativeViewCache;
+function nativeView(){const p=state.project;if(nativeViewCache?.project===p)return nativeViewCache.promise;const promise=(async()=>{const data=await canvasSource();return rpc('native-view',{width:p.width,height:p.height,frame:p.workspace.playhead,pixels:data.buffer},[data.buffer]);})();nativeViewCache={project:p,promise};return promise;}
+async function canvasCoordinates(points,kind='photo'){const p=state.project,view=kind==='photo'?await nativeView():null;return rpc('canvas-coordinates',{kind,points:points.map(p=>p.slice(0,2)),docWidth:view?.width||p.width,docHeight:view?.height||p.height});}
+async function framePixels(frame,width,height,realtime=false,clip){
+  const p=state.project,full=p.photo_operations?.length>0||p.assets.some(a=>a.source_decoder==='photo'),fit=Math.min(width/p.width,height/p.height),w=full?p.width:Math.max(1,Math.round(p.width*fit)),h=full?p.height:Math.max(1,Math.round(p.height*w/p.width));
+  const plan=await rpc('frame-plan',{frame,clip}),inputs=[],parts=[];let offset=0;
+  for(const sample of plan){const a=p.assets.find(a=>a.id===sample.asset_id);
+    const data=await rawPixels(a,sample.seconds+.5/(a.source_fps||fps()),w,h,realtime&&plan.length===1,sample.clip);
+    inputs.push({...sample,offset,length:data.byteLength});parts.push(data);offset+=data.byteLength;
+  }
+  const packed=new Uint8Array(offset);let at=0;for(const part of parts){packed.set(part,at);at+=part.byteLength;}
+  const result=clip?await rpc('render-clip-scene',{clip,width:w,height:h,frame,inputs,pixels:packed.buffer},[packed.buffer]):await rpc('render-scene',{width:w,height:h,frame,inputs,pixels:packed.buffer},[packed.buffer]);
+  if(w===width&&h===height)return new Uint8ClampedArray(result);
+  const out=document.createElement('canvas');out.width=w;out.height=h;out.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(result),w,h),0,0);
+  const small=document.createElement('canvas');small.width=width;small.height=height;const sc=small.getContext('2d');const outFit=Math.min(width/w,height/h);sc.drawImage(out,(width-w*outFit)/2,(height-h*outFit)/2,w*outFit,h*outFit);return sc.getImageData(0,0,width,height).data;
 }
 async function paint(realtime=false){
   if(!state?.project.clips.length)return;
@@ -127,24 +162,23 @@ new ResizeObserver(()=>{if(state)positionOverlay();}).observe($('stage'));
 async function importFile(file){
   if(exporting||busy)throw new Error('En annan åtgärd pågår');await stop();busy=true;
   try{
-    status('Läser '+file.name+'…');const m=await metadata(file);
-    if(m.kind==='video'&&!m.fps)throw new Error('Första versionen kräver MP4 med läsbar bildfrekvens.');
-    if(m.variable)throw new Error('Den här videon har varierande bildfrekvens. Första versionen stöder video med konstant bildfrekvens.');
-    if(m.fps&&state.project.clips.length&&Math.abs(m.fps-fps())>.001)throw new Error('Videons bildfrekvens måste matcha projektet. Skapa ett nytt projekt för den här filmen.');
-    if(!state.project.clips.length){
-      await command('project.new',{name:file.name.replace(/\.[^.]+$/,''),width:m.width,height:m.height,fps:m.fps||25},false);
+    status('Läser '+file.name+'…');const id=crypto.randomUUID();let m;
+    const nativePhoto=/\.(psd|psb|pcraft|dng|cr2|nef|arw|raf|rw2|orf|tif|tiff|exr|hdr)$/i.test(file.name);
+    try{if(nativePhoto)throw new Error('Native bildformat');m=await metadata(file);}catch{m=await rpc('probe-media',{asset:id,blob:file,name:file.name,bytes:file.size});attachedSources.add(id);}
+    if(!state.project.assets.length){
+      await command('project.new',{name:file.name.replace(/\.[^.]+$/,''),width:m.kind==='audio'?1280:m.width,height:m.kind==='audio'?720:m.height,fps:m.fps||25},false);
     }
-    const id=crypto.randomUUID();await putMedia(id,file);
-    await command('asset.add',{asset:{id,name:file.name,kind:m.kind,width:m.width,height:m.height,bytes:file.size,source_fps:m.fps},frames:Math.max(1,Math.round((m.kind==='image'?1:m.duration)*fps()))});
+    await putMedia(id,file);await attachSource({id,name:file.name,bytes:file.size},file);
+    await command('asset.add',{asset:{id,name:file.name,kind:m.kind,width:m.width,height:m.height,bytes:file.size,source_fps:m.kind==='image'?null:m.fps,duration:m.kind==='image'?null:m.duration,sample_rate:m.sample_rate,channels:m.channels,source_decoder:m.source_decoder||''},frames:Math.max(1,Math.round((m.kind==='image'?1:m.duration)*fps()))});
     await thumbnail(id);update();status('Importerad · originalet är oförändrat');
   }finally{busy=false;}
 }
 async function thumbnail(id){
-  const a=state.project.assets.find(a=>a.id===id);const media=await source(a);const c=document.createElement('canvas');c.width=160;c.height=90;const x=c.getContext('2d');x.drawImage(media,0,0,160,90);thumbs.set(id,c.toDataURL());
+  const a=state.project.assets.find(a=>a.id===id);const c=document.createElement('canvas');c.width=160;c.height=90;const x=c.getContext('2d');if(a.kind==='audio'){x.fillStyle='#263b33';x.fillRect(0,0,160,90);x.fillStyle='#afd5c4';x.font='40px system-ui';x.fillText('♫',62,60);}else if(a.kind==='generator'||a.source_decoder){const pixels=await rawPixels(a,0,state.project.width,state.project.height),full=document.createElement('canvas');full.width=state.project.width;full.height=state.project.height;full.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(pixels),full.width,full.height),0,0);x.drawImage(full,0,0,160,90);}else {const media=await source(a);x.drawImage(media,0,0,160,90);}thumbs.set(id,c.toDataURL());
 }
 async function relink(asset){
-  const input=document.createElement('input');input.type='file';input.accept=asset.kind==='video'?'video/*':'image/*';
-  input.onchange=handle(async()=>{const file=input.files[0];if(!file)return;const m=await metadata(file);if(m.kind!==asset.kind||m.width!==asset.width||m.height!==asset.height||file.size!==asset.bytes)throw new Error('Filen matchar inte originalets typ, storlek och dimensioner');await putMedia(asset.id,file);clearSources();await thumbnail(asset.id);await paint();status('Originalet har återlänkats');});input.click();
+  const input=document.createElement('input');input.type='file';
+  input.onchange=handle(async()=>{const file=input.files[0];if(!file)return;let m;try{if(asset.source_decoder)throw new Error('Originalformat');m=await metadata(file);}catch{const probe=crypto.randomUUID();try{m=await rpc('probe-media',{asset:probe,blob:file,name:file.name,bytes:file.size});}finally{await rpc('forget-media',{asset:probe});}}if(m.kind!==asset.kind||m.width!==asset.width||m.height!==asset.height||file.size!==asset.bytes)throw new Error('Filen matchar inte originalets typ, storlek och dimensioner');await putMedia(asset.id,file);attachedSources.delete(asset.id);audioMixer?.clear();clearSources();await thumbnail(asset.id);await paint();status('Originalet har återlänkats');});input.click();
 }
 function scheduleRecovery(){
   clearTimeout(recoveryTimer);recoveryTimer=setTimeout(handle(async()=>{
@@ -154,31 +188,22 @@ function scheduleRecovery(){
 }
 async function save(){await stop();const json=await rpc('save');await putProject({id:projectId,name:state.project.name,json,modified:Date.now()});dirty=false;$('save-status').textContent='Sparat '+new Date().toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'});status('Projektet är sparat lokalt');}
 async function openJson(json,id=crypto.randomUUID()){
-  await stop();const result=await rpc('open',{text:json});clearSources();filmstrip?.reset();thumbs.clear();state=result;projectId=id;dirty=false;update();
+  await stop();const result=await rpc('open',{text:json});await rpc('reset-media');attachedSources.clear();clearSources();audioMixer?.clear();filmstrip?.reset();thumbs.clear();state=result;projectId=id;dirty=false;update();
   for(const a of state.project.assets){try{await thumbnail(a.id);}catch{}}
   update();await paint();status('Projektet är öppnat');$('save-status').textContent='Öppnat projekt';
 }
 function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);}
 function safeName(){return state.project.name.replace(/[^\p{L}\p{N}_-]+/gu,'_')||'projekt';}
-async function stop(){playing=false;playToken++;pauseAll();if(state)update();}
+async function stop(){playing=false;playToken++;pauseAll();await audioMixer?.stop();if(state)update();}
 async function play(){
   if(exporting)throw new Error('Vänta tills exporten är klar');
   if(playing){await stop();return;}if(!state.total_frames)return;
   playing=true;update();const token=++playToken;let frame=state.project.workspace.playhead;
-  let currentClip,start,first;
+  const clock=await audioMixer.start(frame);
   while(playing&&token===playToken&&frame<state.total_frames){
-    let offset=0,c;for(const clip of state.project.clips){if(frame<offset+clip.frames){c=clip;break;}offset+=clip.frames;}
-    const a=state.project.assets.find(a=>a.id===c.asset_id),media=await source(a);
-    if(currentClip!==c.id){pauseAll();currentClip=c.id;first=frame;if(media instanceof HTMLVideoElement){await seek(media,(c.source_in+frame-offset)/fps());media.muted=c.muted;media.volume=c.volume??1;await media.play();}start=performance.now();}
-    if(!playing||token!==playToken)break;
     if(state.project.workspace.playhead!==frame){state=await rpc('command',{command:'seek',params:{frame}});update();}
-    await paint(true);
-    await new Promise(resolve=>requestAnimationFrame(resolve));
-    // The media clock is the master for video and audio. Slow rendering may
-    // skip preview frames, but must never advance the timeline ahead of audio.
-    frame=media instanceof HTMLVideoElement
-      ? (media.ended?offset+c.frames:Math.min(offset+c.frames,offset+Math.max(0,Math.floor(media.currentTime*fps()+1e-6)-c.source_in)))
-      : Math.min(offset+c.frames,first+Math.floor((performance.now()-start)/1000*fps()));
+    await audioMixer.pump();await paint();await new Promise(resolve=>requestAnimationFrame(resolve));
+    frame=Math.min(state.total_frames,Math.floor(clock.seconds()*fps()));
   }
   if(token===playToken)await stop();
 }
@@ -187,26 +212,29 @@ let points=[],drawing=false,drawingScope;
 function point(e){const r=$('canvas').getBoundingClientRect();return [Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),Math.max(0,Math.min(1,(e.clientY-r.top)/r.height)),e.pointerType==='pen'?Math.max(.01,e.pressure):1];}
 function selectTool(next){
   tool=next;document.querySelectorAll('[data-tool]').forEach(b=>b.classList.toggle('active',b.dataset.tool===tool));
-  const names={move:'Flytta',select:'Markering',brush:'Pensel',erase:'Sudd',mask:'Lagermask',text:'Text',eyedropper:'Pipett',hand:'Hand',zoom:'Zoom'};$('tool-name').textContent=names[tool];
+  const names={move:'Flytta',select:'Markering',brush:'Pensel',erase:'Sudd',mask:'Lagermask',text:'Text',eyedropper:'Pipett',hand:'Hand',zoom:'Zoom'};$('tool-name').textContent=names[tool]||nativeUI?.toolName(tool.slice(7))||'Verktyg';
   $('canvas').style.cursor=({move:'move',hand:'grab',zoom:'zoom-in',text:'text'})[tool]||'crosshair';
   if(tool==='text'){workspace.open('photo');document.querySelector('.text-controls').open=true;}
 }
-function drawSelection(){const r=state?.project.workspace.pixel_selection;if(!r||drawing)return;const c=$('stroke-preview');overlay.clearRect(0,0,c.width,c.height);overlay.lineWidth=1;overlay.strokeStyle='white';overlay.setLineDash([5,4]);overlay.strokeRect(r[0]*c.width,r[1]*c.height,(r[2]-r[0])*c.width,(r[3]-r[1])*c.height);overlay.setLineDash([]);}
+function drawSelection(){if(drawing)return;const p=state?.project,r=p?.workspace.pixel_selection;if(!r){nativeUI?.drawSelection();return;}canvasCoordinates([[r[0],r[1]],[r[2],r[1]],[r[2],r[3]],[r[0],r[3]]],'canvas').then(points=>{if(state.project!==p||drawing)return;const c=$('stroke-preview');overlay.clearRect(0,0,c.width,c.height);overlay.lineWidth=1;overlay.strokeStyle='white';overlay.setLineDash([5,4]);overlay.beginPath();points.forEach((a,i)=>i?overlay.lineTo(a[0]*c.width,a[1]*c.height):overlay.moveTo(a[0]*c.width,a[1]*c.height));overlay.closePath();overlay.stroke();overlay.setLineDash([]);}).catch(e=>status(e.message,true));}
 $('canvas').onpointerdown=handle(async e=>{
   if(exporting||playing||e.button!==0)return;
+  if(tool.startsWith("native:")){await nativeUI.start(tool.slice(7),point(e),e);return;}
   if(tool==='zoom'){proUI.stepZoom(e.altKey);return;}
   if(tool==='eyedropper'){const [x,y]=point(e),c=$('canvas'),color=ctx.getImageData(Math.min(c.width-1,Math.floor(x*c.width)),Math.min(c.height-1,Math.floor(y*c.height)),1,1).data;$('color').value='#'+[...color].slice(0,3).map(n=>n.toString(16).padStart(2,'0')).join('');status('Färg hämtad från canvasen');return;}
   if(tool==='hand'){canvasGesture={tool,x:e.clientX,y:e.clientY,left:$('stage').scrollLeft,top:$('stage').scrollTop};$('canvas').setPointerCapture(e.pointerId);return;}
+  if(tool==='move'&&state.project.workspace.native_target){canvasGesture={tool:'nativeMove',start:point(e)};$('canvas').setPointerCapture(e.pointerId);return;}
   if(tool==='move'){const layer=state.project.layers.find(l=>l.id===state.project.workspace.selected_layer);if(!layer)throw new Error('Välj ett lager att flytta.');canvasGesture={tool,id:layer.id,start:point(e),offset:[...layer.offset]};$('canvas').setPointerCapture(e.pointerId);return;}
-  if(tool==='text'){if(state.project.workspace.scope==='project')throw new Error('Välj bildruta, intervall eller klipp för text.');await command('layer.text',{text:{...textSettings(),position:point(e).slice(0,2)},scope:editScope()});$('text-content').focus();$('text-content').select();return;}
+  if(tool==='text'){if(state.project.workspace.scope==='project')throw new Error('Välj bildruta, intervall eller klipp för text.');const [position]=await canvasCoordinates([point(e)],'source');await command('layer.text',{text:{...textSettings(),position},scope:editScope()});$('text-content').focus();$('text-content').select();return;}
   if(!workspace.has('photo')){workspace.open('photo');}
   if(tool!=='select'&&state.project.workspace.scope==='project')throw new Error('Välj bildruta, intervall eller klipp för att måla eller maskera.');
   if(tool==='mask'&&!state.project.workspace.selected_layer)throw new Error('Välj ett lager för att maskera.');
   drawingScope=tool==='select'?null:editScope();drawing=true;points=[point(e)];$('canvas').setPointerCapture(e.pointerId);drawOverlay();
 });
 $('canvas').onpointermove=e=>{
+  if(tool.startsWith('native:')){nativeUI.move(point(e),e);return;}
   if(canvasGesture?.tool==='hand'){const g=canvasGesture;$('stage').scrollLeft=g.left+g.x-e.clientX;$('stage').scrollTop=g.top+g.y-e.clientY;return;}
-  if(canvasGesture?.tool==='move'){canvasGesture.end=point(e);return;}
+  if(['move','nativeMove'].includes(canvasGesture?.tool)){canvasGesture.end=point(e);return;}
   if(drawing&&points.length<20000){points.push(point(e));drawOverlay();}
 };
 function drawOverlay(){const c=$('stroke-preview');
@@ -214,10 +242,12 @@ function drawOverlay(){const c=$('stroke-preview');
   overlay.clearRect(0,0,c.width,c.height);overlay.strokeStyle=$('color').value;overlay.globalAlpha=Number($('brush-opacity').value)/100;overlay.lineWidth=Number($('brush-size').value)/state.project.width*c.width;overlay.lineCap='round';overlay.lineJoin='round';overlay.beginPath();for(const [i,p]of points.entries()){i?overlay.lineTo(p[0]*c.width,p[1]*c.height):overlay.moveTo(p[0]*c.width,p[1]*c.height);}if(points.length===1)overlay.lineTo(points[0][0]*c.width+.1,points[0][1]*c.height+.1);overlay.stroke();overlay.globalAlpha=1;
 }
 $('canvas').onpointerup=handle(async()=>{
-  if(canvasGesture){const g=canvasGesture;canvasGesture=null;if(g.tool==='move'&&g.end){await command('layer.set',{id:g.id,offset:g.offset.map((n,i)=>Math.max(-1,Math.min(1,n+g.end[i]-g.start[i])))});}return;}
+  if(tool.startsWith('native:')){await nativeUI.end();return;}
+  if(canvasGesture){const g=canvasGesture;canvasGesture=null;if(g.tool==='nativeMove'&&g.end){const [a,b]=await canvasCoordinates([g.start,g.end]);await nativeCommand('photo','edit.transform',{matrix:[1,0,0,1,b[0]-a[0],b[1]-a[1]]});}if(g.tool==='move'&&g.end){const [a,b]=await canvasCoordinates([g.start,g.end],'source');await command('layer.set',{id:g.id,offset:g.offset.map((n,i)=>Math.max(-1,Math.min(1,n+b[i]-a[i])))});}return;}
   if(!drawing)return;drawing=false;
-  if(tool==='mask'||tool==='select'){const a=points[0],b=points.at(-1),rect=[Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.max(a[0],b[0]),Math.max(a[1],b[1])];overlay.clearRect(0,0,$('stroke-preview').width,$('stroke-preview').height);if(rect[0]===rect[2]||rect[1]===rect[3])return;if(tool==='select')await command('view.set',{pixel_selection:rect},false);else await command('layer.set',{id:state.project.workspace.selected_layer,mask:rect});drawSelection();status(tool==='select'?'Bildområdet markerat · nya penseldrag begränsas till markeringen':'Lagermask sparad');return;}
-  const color=$('color').value.match(/\w\w/g).map(h=>parseInt(h,16)/255);const stroke={points:points.slice(),color:[...color,1],size:Math.max(.0001,Math.min(.5,Number($('brush-size').value)/state.project.width)),erase:tool==='erase',hardness:Number($('brush-hardness').value)/100,opacity:Number($('brush-opacity').value)/100,flow:Number($('brush-flow').value)/100,pressure_size:$('brush-pressure').checked,selection:state.project.workspace.pixel_selection};overlay.clearRect(0,0,$('stroke-preview').width,$('stroke-preview').height);await command('layer.stroke',{stroke,scope:drawingScope});drawSelection();status('Penseldraget sparat i valt intervall');
+  if(tool==='mask'||tool==='select'){const [a,b]=(await canvasCoordinates([points[0],points.at(-1)],'source')).map(p=>p.map(n=>Math.max(0,Math.min(1,n)))),rect=[Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.max(a[0],b[0]),Math.max(a[1],b[1])];overlay.clearRect(0,0,$('stroke-preview').width,$('stroke-preview').height);if(rect[0]===rect[2]||rect[1]===rect[3])return;if(tool==='select')await command('view.set',{pixel_selection:rect},false);else await command('layer.set',{id:state.project.workspace.selected_layer,mask:rect});drawSelection();status(tool==='select'?'Bildområdet markerat · nya penseldrag begränsas till markeringen':'Lagermask sparad');return;}
+  if(state.project.workspace.native_target||state.project.workspace.photo_tools||state.project.workspace.photo_selection?.length||nativeUI?.paintTarget()==='mask'){await nativeCommand('photo','paint.stroke',{points:(await canvasCoordinates(points)).map((p,i)=>[...p,points[i][2]]),color:$('color').value,size:Number($('brush-size').value),hardness:Number($('brush-hardness').value)/100,opacity:Number($('brush-opacity').value)/100,flow:Number($('brush-flow').value)/100,erase:tool==='erase',target:nativeUI?.paintTarget()||'pixels'},drawingScope);overlay.clearRect(0,0,$('stroke-preview').width,$('stroke-preview').height);drawSelection();return;}
+  const color=$('color').value.match(/\w\w/g).map(h=>parseInt(h,16)/255),mapped=await canvasCoordinates(points,'source');const stroke={points:mapped.map((p,i)=>[...p.map(n=>Math.max(0,Math.min(1,n))),points[i][2]]),color:[...color,1],size:Math.max(.0001,Math.min(.5,Number($('brush-size').value)/state.project.width)),erase:tool==='erase',hardness:Number($('brush-hardness').value)/100,opacity:Number($('brush-opacity').value)/100,flow:Number($('brush-flow').value)/100,pressure_size:$('brush-pressure').checked,selection:state.project.workspace.pixel_selection};overlay.clearRect(0,0,$('stroke-preview').width,$('stroke-preview').height);await command('layer.stroke',{stroke,scope:drawingScope});drawSelection();status('Penseldraget sparat i valt intervall');
 });
 $('canvas').onpointercancel=()=>{drawing=false;canvasGesture=null;points=[];overlay.clearRect(0,0,$('stroke-preview').width,$('stroke-preview').height);drawSelection();};
 document.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>selectTool(b.dataset.tool));
@@ -228,7 +258,7 @@ $('media-input').onchange=handle(async()=>{for(const file of $('media-input').fi
 $('stage').ondragover=e=>{e.preventDefault();};$('stage').ondrop=handle(async e=>{e.preventDefault();for(const f of e.dataTransfer.files)await importFile(f);});
 bind('blank',()=>command('asset.add',{asset:{id:crypto.randomUUID(),name:'Tom bild',kind:'blank',width:state.project.width,height:state.project.height,bytes:0,source_fps:null},frames:Math.round(fps())}));
 bind('demo',async()=>{const response=await fetch(new URL('demo/great-wave.jpg',document.baseURI));if(!response.ok)throw new Error('Exempelbilden kunde inte öppnas');const blob=await response.blob();await importFile(new File([blob],'The Great Wave.jpg',{type:'image/jpeg'}));});
-bind('new',async()=>{if(dirty){await save();}await stop();clearSources();filmstrip?.reset();thumbs.clear();projectId=crypto.randomUUID();await command('project.new',{},false);$('save-status').textContent='Nytt projekt';status('Skapa en bild eller importera media');});
+bind('new',async()=>{if(dirty){await save();}await stop();await rpc('reset-media');attachedSources.clear();clearSources();audioMixer?.clear();filmstrip?.reset();thumbs.clear();projectId=crypto.randomUUID();await command('project.new',{},false);$('save-status').textContent='Nytt projekt';status('Skapa en bild eller importera media');});
 bind('recover',async()=>{if(recovery){await openJson(recovery.json,recovery.original_id);$('recover').hidden=true;status('Projektet återställt från automatisk återställningspunkt');}});
 bind('save',save);bind('undo',async()=>{await stop();await command('undo');});bind('redo',()=>command('redo'));
 bind('backup',async()=>{await save();download(await backup(await rpc('save')),safeName()+'.cstudio-backup');status('Säkerhetskopian innehåller projektet och originalmedia');});
@@ -260,7 +290,7 @@ $('duration').onchange=handle(()=>command('clip.duration',{id:state.active_clip?
 bind('trim',async()=>{const params={id:state.active_clip?.id,start:Number($('trim-start').value),end:Number($('trim-end').value)};await stop();await command('clip.trim',params);status('Klippet är trimmat. Redigeringarna följer källbildrutorna.');});
 for(const [id,delta] of [['clip-earlier',-1],['clip-later',1]])bind(id,async()=>{await stop();const index=state.project.clips.findIndex(c=>c.id===state.active_clip?.id);await command('clip.move',{id:state.active_clip?.id,index:Math.max(0,Math.min(state.project.clips.length-1,index+delta))});});
 $('volume').onchange=handle(()=>command('clip.volume',{id:state.active_clip?.id,volume:Number($('volume').value)/100}));
-function textSettings(){const color=$('color').value.match(/\w\w/g).map(h=>parseInt(h,16)/255);return {content:$('text-content').value,size:Number($('text-size').value)/state.project.width,color:[...color,1],position:[.1,.65]};}
+function textSettings(){  const color=$('color').value.match(/\w\w/g).map(h=>parseInt(h,16)/255);return {content:$('text-content').value,size:Number($('text-size').value)/state.project.width,color:[...color,1],position:[.1,.65]};}
 bind('text-add',()=>command('layer.text',{text:textSettings(),scope:editScope()}));
 bind('text-update',()=>command('layer.set',{id:state.project.workspace.selected_layer,text:textSettings()}));
 bind('layer-scope-apply',()=>command('layer.scope',{id:state.project.workspace.selected_layer,start:Number($('layer-start').value),end:Number($('layer-end').value)}));
@@ -277,7 +307,7 @@ bind('export',async()=>{await stop();$('export-description').textContent=`${stat
 bind('export-image',async()=>{const p=state.project;const pixels=await framePixels(p.workspace.playhead,p.width,p.height);const c=document.createElement('canvas');c.width=p.width;c.height=p.height;c.getContext('2d').putImageData(new ImageData(pixels,p.width,p.height),0,0);download(await new Promise(r=>c.toBlob(r,'image/png')),safeName()+'.png');status('PNG exporterad');});
 bind('export-cancel',()=>{cancelExport=true;});
 bind('export-video',()=>exportVideo());
-bind('export-file',async()=>{if(!window.showSaveFilePicker)throw new Error('Direktlagring kräver Chrome eller Edge på desktop.');const file=await showSaveFilePicker({suggestedName:safeName()+'.webm',types:[{description:'WebM-video',accept:{'video/webm':['.webm']}}]});await exportVideo(file);});
+bind('export-file',async()=>{if(!window.showSaveFilePicker)throw new Error('Direktlagring kräver Chrome eller Edge på desktop.');const format=$('export-format').value,file=await showSaveFilePicker({suggestedName:safeName()+'.'+format,types:[{description:format.toUpperCase()+'-video',accept:{['video/'+format]:['.'+format]}}]});await exportVideo(file);});
 async function exportVideo(file){
   if(exporting||!state.total_frames)throw new Error('Importera media först');
   await stop();exporting=true;cancelExport=false;
@@ -286,8 +316,8 @@ async function exportVideo(file){
   $('export-file').disabled=true;
   try{
     if(file)sink=await file.createWritable();
-    const blob=await exportTimeline({state,framePixels,sink,cancelled:()=>cancelExport,progress:value=>{$('export-progress').value=value;status(`Exporterar ${Math.round(value*100)} %…`);}});
-    if(sink)await sink.close();else download(blob,safeName()+'.webm');status('Video med samtliga bildrutor och redigeringar exporterad');
+    const blob=await exportTimeline({format:$('export-format').value,mixAudio:audioMixer.mix,nativeVideo:{begin:()=>rpc('encode-video-begin'),frame:(frame,pixels)=>rpc('encode-video-frame',{frame,pixels:pixels.buffer},[pixels.buffer]),end:()=>rpc('encode-video-end')},state,framePixels,sink,cancelled:()=>cancelExport,progress:value=>{$('export-progress').value=value;status(`Exporterar ${Math.round(value*100)} %…`);}});
+    if(sink)await sink.close();else download(blob,safeName()+'.'+$('export-format').value);status('Video med samtliga bildrutor och redigeringar exporterad');
   }catch(error){if(sink)await sink.abort().catch(()=>{});throw error;}finally{
     $('export-file').disabled=false;
     exporting=false;$('export-progress').hidden=true;$('export-cancel').hidden=true;$('export-image').disabled=false;$('export-video').disabled=false;$('export-close').disabled=false;
@@ -303,8 +333,10 @@ window.addEventListener('keydown',handle(async e=>{
   if(e.code==='Space'){e.preventDefault();await play();}else if(e.key==='ArrowRight')$('next').click();else if(e.key==='ArrowLeft')$('prev').click();else if(e.key.toLowerCase()==='i')$('set-in').click();else if(e.key.toLowerCase()==='o')$('set-out').click();
 }));
 workspace=createWorkspace({status,getPresentation:()=>{const {timeline_visible,left_visible,right_visible,timeline_height}=state.project.workspace;return {timeline_visible,left_visible,right_visible,timeline_height};},applyPresentation:params=>command('view.set',params,false)});
-filmstrip=createFilmstrip({getState:()=>state,command,stop,rpc,status,isPlaying:()=>playing||exporting});
+filmstrip=createFilmstrip({getState:()=>state,command,nativeCommand,framePixels,stop,status,isPlaying:()=>playing||exporting});
 developUI=createDevelopUI({getState:()=>state,command,editScope,status});
 proUI=createProUI({getState:()=>state,command,selectTool,status,updateOverlay:positionOverlay});
-window.creativeStudio={selectTool,developUI,proUI,workspace,filmstrip,execute:command,inspect:()=>structuredClone(state),save:()=>rpc('save'),open:openJson,importFile,framePixels,exportVideo};
+audioMixer=createAudioMixer({rpc,attachSource,getState:()=>state});
+nativeUI=createNativeUI({getState:()=>state,nativeCommand,nativeView,canvasCoordinates,rpc,command,selectTool,status,editScope,isPlaying:()=>playing||exporting,overlay,canvas:$('canvas')});
+window.creativeStudio={canvasCoordinates,audioMixer,nativeUI,nativeCommand,nativeView,selectTool,developUI,proUI,workspace,filmstrip,execute:command,inspect:()=>structuredClone(state),save:()=>rpc('save'),open:openJson,importFile,framePixels,exportVideo};
 handle(async()=>{state=await rpc('inspect');const legacy=localStorage.getItem('creative-studio-layout'),l=workspace.inspect().presentation||(legacy?JSON.parse(legacy):null);if(l){state=await rpc('command',{command:'view.set',params:{timeline_visible:l.timeline_visible,left_visible:l.left_visible,right_visible:l.right_visible,timeline_height:l.timeline_height}});}if(matchMedia('(max-width:780px)').matches)state=await rpc('command',{command:'view.set',params:{left_visible:false,right_visible:false}});update();const list=await projects();recovery=list.filter(p=>p.recovery&&!list.some(saved=>saved.id===p.original_id&&saved.modified>=p.modified)).sort((a,b)=>b.modified-a.modified)[0];$('recover').hidden=!recovery;status('Redo · importera media eller skapa en bild');})();

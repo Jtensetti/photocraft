@@ -23,7 +23,7 @@ export async function mp4Info(file) {
   }
   if(error) throw new Error('MP4-filen kunde inte läsas: '+error);
   const video=info?.videoTracks?.[0];
-  if(!video) return null;
+  if(!video) return info?.audioTracks?.length?{fps:null,variable:false,info,parser}:null;
   const samples=parser.getTrackById(video.id)?.samples || [];
   const durations=new Set(samples.map(s=>s.duration));
   return {fps:video.nb_samples/(video.duration/video.timescale),variable:durations.size>1,info,parser};
@@ -33,12 +33,14 @@ export async function metadata(file) {
     const bitmap=await createImageBitmap(file,{imageOrientation:'from-image'});
     const result={kind:'image',width:bitmap.width,height:bitmap.height,duration:1,fps:null}; bitmap.close(); return result;
   }
-  const url=URL.createObjectURL(file); const video=document.createElement('video'); video.preload='metadata'; video.src=url;
+  const audio=file.type.startsWith('audio/')||/\.(wav|m4a|aac|mp3|flac|ogg)$/i.test(file.name);
+  const url=URL.createObjectURL(file); const video=document.createElement(audio?'audio':'video'); video.preload='metadata'; video.src=url;
   try {
     await event(video,'loadedmetadata');
     if(!Number.isFinite(video.duration) || video.duration<=0) throw new Error('Videon saknar en giltig varaktighet');
-    const mp4=file.type.includes('mp4') || /\.mp4$/i.test(file.name) ? await mp4Info(file) : null;
-    return {kind:'video',width:video.videoWidth,height:video.videoHeight,duration:video.duration,fps:mp4?.fps??null,variable:mp4?.variable??false};
+    const mp4=file.type.includes('mp4') || /\.(mp4|m4a|mov)$/i.test(file.name) ? await mp4Info(file) : null;
+    const a=mp4?.info.audioTracks?.[0]?.audio;
+    return {kind:audio?'audio':'video',width:audio?1:video.videoWidth,height:audio?1:video.videoHeight,duration:video.duration,fps:mp4?.fps??null,variable:mp4?.variable??false,sample_rate:a?.sample_rate,channels:a?.channel_count};
   } finally { video.removeAttribute('src');video.load();URL.revokeObjectURL(url); }
 }
 export function event(target,type,timeout=15000) {

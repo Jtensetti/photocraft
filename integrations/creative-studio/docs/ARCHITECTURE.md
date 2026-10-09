@@ -1,61 +1,40 @@
-# Arkitekturbeslut · ADR-001
+# Ett projekt, tre perspektiv · ADR-001
 
-Status: implementerat för första vertikala versionen, 2026-10-09.
+Status: implementerat, version 0.4, 2026-10-09.
 
-## Ett auktoritativt projekt
+## Auktoritativ modell
 
-En `Studio` i en dedikerad Web Worker äger det versionshanterade Rust-projektet, alla redigeringsoperationer och gemensam undo/redo. Webbsidan skickar kommandon och visar `inspect()`-svaret. Den äger inte en andra redigerbar dokumentmodell. Verktygsläget är ett arbetsytefält och påverkar endast synliga paneler.
+En `Studio` i en dedikerad Web Worker äger projektet, operationerna och den gemensamma historiken. `Project.timeline` är den enda sparade tidsstrukturen: en FilmCraft-sekvens med spår, klipp, effekter och övergångar. `Project.clips` är en härledd UI-projektion och serialiseras inte. Äldre projekt med sekventiella klipp migreras vid öppning.
 
-En bildruta är resultatet av att evaluera projektet vid en global bildruteidentifierare. Klipp refererar till ett original och dess `source_in`; stillbilders varaktighet lagras som ett heltal, inte som upprepade bilder. Ett scoped pensellager eller en framkallningsoperation är ett objekt med ett halvöppet intervall i klippets lokala tid. Vid delning delas korsande operationers intervall och det högra klippets originaloffset flyttas fram; originalmedia dupliceras inte.
+Original, biblioteksmetadata, generatorer och nästlade sekvenser hör till samma projekt. UI-läge, panelplacering, zoom och markering skapar aldrig en ny projektinstans. Bara `Studio` sparar och hanterar undo/redo. Motorernas interna historik används högst som kortlivad arbetsinformation och lagras inte separat.
 
-## Återanvänd motorbibliotek, inte tre Session-objekt
+## Motoradaptrar
 
-PhotoCrafts `Session` äger dokument, LightCrafts `Session` en katalog och FilmCrafts `Session` ett eget projekt. Att anropa deras kommandoregister direkt skulle kräva tre synkroniserade persistenta modeller. Första versionen återanvänder i stället lägre, fristående funktioner:
+`src/native.rs` bygger PhotoCrafts dokumentvy från originalets lager, gemensamma lager och bildoperationer som gäller den aktuella tiden. Native operationer sparar kommandot, parametrarna, stabilt mållager, spatial markering, verktygsinställningar och explicit halvöppet tidsscope. Lager-ID:n i temporära dokument översätts till stabila alias. Urklipp som en paste-operation behöver lagras som lossless pcraft-data; det levande urklippet sparas inte i projektet.
 
-- `photocraft-paint::render_stroke` spelar upp penseloperationer och `photocraft-compose::render` komponerar lager.
-- `lightcraft-pipeline::render` använder `DevelopSettings` med projektets aktiva parametrar. sRGB avkodas och konverteras till linjär Rec.2020 innan framkallningen. Vitbalans använder uttryckligen Custom-läge. Originalets alfa behålls.
-- `filmcraft-time::{FrameRate, Tick}` håller rationell bildfrekvens och exakt projekttid.
+LightCraft får samma komponerade canvas som PhotoCraft. Dess riktiga kommandon ändrar DevelopSettings; resultatet lagras i projektets justeringsoperationer. Lokala masker, spot removal, beskärning och förinställningar använder originalmotorn. Projektjusteringar sparar bara avvikande inställningar så att globala färgändringar bevarar lokala masker. Lokala masker/geometri kräver bildruta, intervall eller klipp. En återanvänd, härledd LightCraft-kommandovy tömmer katalog, källor och historik varje anrop: originalets desktop-downloader har en destructor som annars anropar en klocka som saknas i WASM. Vyn sparar aldrig ett eget projekt.
 
-PhotoCrafts `Document` som byggs vid rendering är en temporär kompositionsvy, utan egen Session, historik eller sparformat. Den försvinner efter bildrutan. Originalets avkodade pixlar, LightCraft-resultatet och pensellagren skickas genom samma funktion för förhandsvisning, PNG och videobildrutor.
+`src/film.rs` härleder en FilmCraft-vy från den auktoritativa sekvensen och projektbiblioteket. Native kommandon uppdaterar samma sekvens och metadata. Scopes följer källtid vid razor, trim, slip, hastighet och reverse. Nästlade klipp behåller sina inre scopes. Klippflytt eller panelbyte får inte vidga ett penseldrags omfattning.
 
-FilmCrafts fullständiga render- och exportbibliotek är **inte** anslutna i denna version. Projekt/edit används genom den härledda trimningsadaptern. Sekventiell klipptid, delning och muting finns i det lilla gemensamma integrationslagret. Att koppla in dessa bibliotek kräver en adapter från den gemensamma modellen till en härledd FilmCraft-renderingsvy och en `SourceProvider`. Adaptern får inte introducera ett separat sparat projekt eller dubbla undo-stackar.
+## Gemensam rendering
 
-## Webbmedier och resursgränser
+1. Källplanen anger originalets tidspositioner för varje synligt klipp, inklusive övergångar och frame blending.
+2. Originalet avkodas på begäran. PhotoCraft spelar upp de operationer som gäller den bildrutan.
+3. LightCraft framkallar den komponerade bilden i flyttal efter konvertering från sRGB till linjär Rec.2020. Alfa följer samma geometri.
+4. FilmCrafts riktiga `render_sequence` komponerar alla videospår, motion, opacity, effekter, övergångar, grafik och captions.
 
-HTMLVideoElement och ImageBitmap avkodar original på begäran. Ett MP4-index läses via högst 1 MB stora Blob-delar, med hopp över mediadelen enligt MP4Box. Ingen hel video läses som ArrayBuffer. Ett LRU behåller upp till fyra källobjekt; video pausas och objekt-URL:er återkallas vid byte/eviction. Miniatyrer är 160×90.
+Canvas, filmrulle, PNG och videoexport använder denna renderingsväg. Native bildoperationer utvärderas vid projektupplösningen innan preview skalas ned. Canvasverktygens koordinater inverterar samma LightCraft-geometri och FilmCraft-motion som renderingen använder.
 
-IndexedDB innehåller original som Blob-objekt och sparade projekt som JSON. Backupen består av en längdprefixad JSON-header och Blob-delar av originalen. Återställning validerar först projektet i Rust. Det finns ingen nätverksväg för uppladdning av användarens media.
+## Original och begränsade arbetsbuffertar
 
-Förhandsvisning begränsas till 960×640. Projekt och bildrutebuffert begränsas till 16 777 216 pixlar, med högst 16 384 pixlar per sida. Projektgränser finns också för objekt, tidslinjelängd och penselpunkter. Historiken behåller högst 30 innehållskommandon och 15 MB serialiserade metadata-/operationssnapshots, aldrig kopior av videofiler eller avkodade bildrutor. Äldre snapshots tas bort när budgeten nås. Aktuella projektoperationer begränsas också till 15 MB, så sparformatet alltid kan öppnas inom 32 MB-gränsen. Strukturell delning är nästa optimering för stora penselprojekt.
+IndexedDB innehåller original som Blob och projekt/historik som JSON. Videobildrutor är tidsreferenser, inga exporterade PNG-filer. Browserkällor har ett LRU om fyra objekt; native avkodarkällor har ett LRU om två objekt. `src/sources.rs` ger originalmotorerna range-läsning genom `Blob.slice` i arbetaren. Originalfilm läses aldrig som en hel ArrayBuffer. PSD/pcraft och andra stillbilder får läsas i sin helhet inom 64 MB/16 MP-importgränsen. Återlänkning invaliderar avkodarcachen.
 
-## Tidsstämplar och ljud
+Projekt/bildbuffert har högst 16 777 216 pixlar. Operationer, punkter, spår, samtidiga källor och tidslinjelängd valideras. Studio behåller högst 30 innehållssteg och 15 MB serialiserad historik; aktuella projektoperationer har också en 15 MB-budget. Originalmedia dupliceras inte i historiken.
 
-Projektets bildrutetid kommer från FilmCraft. Exportens mikrosekunder räknas med heltal och rationell bildfrekvens för varje bildruta; den ackumulerar inte en flyttalsklocka. WebCodecs kodar varje bearbetad bildruta som VP9. WebM-muxern skriver seekbar utdata med tidsstämplar och varaktighet. Realtidsinspelning används inte för export.
+## Ljud, uppspelning och export
 
-AudioDecoder läser komprimerade ljudpaket via Blob-delar, normaliserar MP4-edit-listans tidsförskjutning, beskär vid klippets originaloffset och placerar samples på tidslinjens 48 kHz-klocka. Mutade klipp och stillbilder fylls med tystnad. AudioEncoder kodar en sammanhängande Opus-ström; den flushas en gång vid slutet för att undvika upprepad codec-padding. Decoder/encoder-köer töms med backpressure. Video/audio-dataobjekt stängs efter användning.
+WAV läses i sampleintervall; MP3/FLAC/AIFF använder Symphonia med en range-adapter, samma decoderfamilj som FilmCraft. Containerljud använder WebCodecs eller native avkodare. Bounded PCM-fönster resamplas och skickas till FilmCrafts riktiga audio-DSP/mixer med spår, gain, effekter och mute. Uppspelning följer AudioContext-klockan.
 
-Förhandsvisning följer videons medieklocka så att långsam CPU-rendering inte driver spelhuvudet framför ljudet. Den ger inte en garanti om att varje bildruta hinner visas under uppspelning. Exporten gör det. Nedladdning i minnet begränsas till två minuter. Direktlagring till en sökbar filström stödjer längre sekvenser med begränsade muxer- och codec-köer.
+Videoexport samplar varje projektruta med rationella tidsstämplar. WebM använder VP9/Opus. MP4 använder browserns H.264 när tillgängligt och annars FilmCrafts egen strömmande H.264-kodare, med AAC eller Opus-ljud. Kodarköer och filskrivningar dräneras under arbetet. Nedladdning i minnet begränsas till två minuter; sökbar direktlagring stöder längre export och avbrott. Exportkodaren är en tillfällig resurs utan projektmodell.
 
-## Utökning utan att byta grundprincip
-
-Text, rektangulär mask och centrerad skala/rotation finns nu i gemensamma lageroperationer. Schemat behöver senare former, fria masker, keyframes och tracking; dessa finns ännu inte som tomma låtsasobjekt. De ska använda samma scope och tydliga enheter/tidsbas. Keyframes samplas vid renderingtiden. Tracking ska producera tidsbaserade parametrar; penseldrag får aldrig automatiskt tolkas som rörelsespårning.
-
-När fler spår och övergångar införs ska implicit sekventiell klipptid ersättas genom en explicit schemamigrering. GPU-, HDR-/ICC- och RAW-adaptrar ska gå bakom samma renderingstjänst. Inga ändringar av uppströmsprogrammens fungerande modeller behövs för den nuvarande versionen.
-
-## 0.2-adapter och UI
-
-`web/layout.js` äger endast panelplacering. `web/filmstrip.js` projicerar samma
-klipp och operationer, med synliga tidsminiatyrer och separat begränsad avkodarcache.
-`src/film.rs` bygger en tillfällig FilmCraft-editvy för trimning; inget extra
-projekt sparas eller äger historik. Text och masker renderas av PhotoCraft.
-Utdata från `web/export.js` kan gå till en sökbar filström, med interfolierad
-ljud-/videokodning och dränerade 1 MiB-utdataköer.
-
-## 0.3 — Pro-gränssnitt utan extra projektmodell
-
-`web/pro-ui.js` projicerar menyer, verktygsval och canvaszoom.
-`web/develop-ui.js` bygger LightCrafts reglage från inspekterade motorgränser
-och visar histogram/kurvor. Utökade fotografiska parametrar ligger i samma
-sparsamma justeringsoperationer som tidigare. UI håller ingen egen framkallningsfil.
-PhotoCrafts BrushSettings, Affine och BlendMode används i den befintliga
-renderingsvägen. Både temporala och spatiala penselmål sparas explicit per drag.
+8-bitars sRGB är fortfarande in/ut-kontraktet för den gemensamma canvasen. CPU-preview garanterar inte att varje ruta hinner visas under uppspelning. Export renderar varje ruta. HDR/ICC/16-bitars trohet och lång högupplöst export behöver fortsatt arbete.

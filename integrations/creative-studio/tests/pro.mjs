@@ -4,7 +4,7 @@ try{
  await page.goto('http://127.0.0.1:5177');await page.waitForFunction(()=>document.querySelector('#status').textContent.startsWith('Redo'));
  await page.locator('#demo').click();await page.waitForFunction(()=>document.querySelector('#status').textContent.startsWith('Importerad'));
  const fitted=await page.locator('#canvas').boundingBox(),area=await page.locator('#stage').boundingBox();assert.ok(fitted.y>=area.y&&fitted.y+fitted.height<=area.y+area.height&&fitted.x>=area.x&&fitted.x+fitted.width<=area.x+area.width,'Fit must display the entire image');assert.ok(Math.abs(fitted.width/fitted.height-1280/860)<.01,'Fit must preserve aspect ratio');
- assert.equal(await page.locator('.tool-rail [data-tool] svg').count(),9);assert.equal(await page.locator('#app-menus details').count(),9);
+ assert.equal(await page.locator('.tool-rail [data-tool] svg').count(),9);assert.equal(await page.locator('#app-menus details').count(),10);
  const original=await page.evaluate(async()=>[...await creativeStudio.framePixels(0,160,100)]);
  await page.locator('[data-mode=light]').click();await page.locator('#light-panel > .develop-section').filter({hasText:'Tonkurva'}).locator('summary').click();await page.locator('#tone-curve').scrollIntoViewIfNeeded();const curve=await page.locator('#tone-curve').boundingBox();
  await page.mouse.move(curve.x+curve.width*.5,curve.y+curve.height*.5);await page.mouse.down();await page.mouse.move(curve.x+curve.width*.5,curve.y+curve.height*.2,{steps:6});await page.mouse.up();

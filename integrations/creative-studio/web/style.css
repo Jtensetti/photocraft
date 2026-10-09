@@ -12,3 +12,23 @@ dialog{width:min(520px,92vw);max-height:85vh;overflow:auto;background:#323232;co
 input[type=number]{appearance:textfield}input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{appearance:none;margin:0}.tools input[type=number]{width:45px}.full-button{white-space:normal}.app-menu-content button{font-size:13px}.tool-rail [data-tool=text] svg{width:19px;height:19px}
 
 .tools{flex:1;overflow-x:auto;scrollbar-width:thin;height:32px}.tools>*{flex-shrink:0}.canvas-actions{flex-shrink:0}.canvas-toolbar{height:40px}.stage{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
+/* Native tools retain the same charcoal workspace and its permanent canvas. */
+#native-tools-dialog{width:min(960px,95vw);max-width:960px;height:min(720px,90vh)}
+.native-catalog-toolbar{display:grid;grid-template-columns:140px 1fr 160px;gap:8px;margin-bottom:12px}
+.native-catalog-body{display:grid;grid-template-columns:minmax(220px,1fr) minmax(240px,1.15fr);gap:16px;height:calc(100% - 98px)}
+.native-command-list,.native-command-form{overflow:auto;min-height:0}
+.native-command{display:flex;flex-direction:column;text-align:left;width:100%;border:0;border-radius:0;border-bottom:1px solid #333;padding:9px 10px;gap:3px}
+.native-command small{font-size:10px;color:#999}.native-command.unavailable{opacity:.45}
+.native-command-scope{color:var(--accent);font-size:12px}.native-param{align-items:start;margin:12px 0;gap:8px}
+.native-param textarea{width:100%;min-height:48px;font:11px monospace;background:#191919;color:#ddd;border:1px solid #444}
+.native-param .use-param{width:14px;flex:none}.native-command-form button[type=submit]{margin-top:16px}
+.native-query-result{font:11px monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+#extended-tool{max-width:150px;flex-shrink:0}.native-layer,.local-mask-list button{display:block;text-align:left;width:100%;font-size:11px;border:0;border-radius:0;background:transparent;padding:8px}
+.native-layer.active,.local-mask-list .active{background:#3e4851}.native-layer-section h3,.native-film-tools h3,.native-mask-section h3{font-size:12px}
+.local-mask-buttons,.native-film-actions{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}.native-track{display:flex;align-items:center;justify-content:space-between;padding:4px;font-size:11px}
+@media(max-width:700px){.native-catalog-toolbar{grid-template-columns:100px 1fr}.native-category{grid-column:1/-1}.native-catalog-body{grid-template-columns:1fr 1fr;gap:8px}}
+.timeline-track{position:absolute;left:0;background:#272b2e;border-bottom:1px solid #46494b;z-index:0}.audio-track{background:#242d29}.track-label{position:sticky;left:0;display:inline-block;padding:2px 6px;background:#252525e8;border:1px solid #444;font:10px ui-monospace,monospace;z-index:5;pointer-events:none}.clip{z-index:1}.clip-grip{position:absolute;top:23px;bottom:0;width:6px;background:#d9e7f41a;z-index:6;cursor:ew-resize}.clip-grip.in{left:0}.clip-grip.out{right:0}.clip-grip:hover{background:#bbd9ff80}.timeline-transition{position:absolute;z-index:4;height:24px;font-size:9px;color:#ffe4bc;background:linear-gradient(135deg,#78613e,#4f493d);border:1px solid #bfad81;padding:3px;overflow:hidden;white-space:nowrap}.disabled-track{opacity:.42}
+@media(max-width:1400px){#native-tools{font-size:10px;padding:2px 4px}#extended-tool{max-width:105px;font-size:10px}.tools{gap:5px}}
+@media(max-width:1000px){#extended-tool{max-width:70px}.brush-extra{display:none}}
+.native-layer-properties{display:flex;gap:5px;flex-wrap:wrap;padding:7px 0}.native-layer-properties>input[type=text]{width:100%}.native-layer-properties>select{width:55%;font-size:11px}.native-layer-properties>input[type=range]{width:40%}.native-layer-properties button{font-size:11px;border:1px solid #555}.native-layer>span:first-child{padding:1px 5px}.native-layer>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.effect-add{display:flex;gap:5px;flex-wrap:wrap;border-top:1px solid #222;padding-top:8px}.effect-add>input{width:100%}.effect-add>select{width:calc(100% - 70px);font-size:11px}.effect-add>button{font-size:11px}.effect-target{font-size:10px;color:#abc5e3;margin:7px 0}.effect-section{border-bottom:1px solid #222;padding:5px 0}.effect-section>summary{cursor:pointer;padding:6px 0;font-size:12px}.effect-param{font-size:11px}.effect-param>span{flex:1}.effect-param>input,.effect-param>select{width:76px}.effect-param>button{padding:2px 4px}.effect-param>input[type=checkbox]{width:auto}

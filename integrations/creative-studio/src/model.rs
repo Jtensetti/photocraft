@@ -5,6 +5,20 @@ use serde_json::{Value, json};
 pub const SCHEMA: u32 = 1;
 pub const MAX_FRAMES: u32 = 2_000_000;
 
+/// FilmCraft library data belongs to the shared project; it is not a second project.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct FilmLibrary {
+    pub settings: filmcraft_project::ProjectSettings,
+    pub root: Option<filmcraft_project::Bin>,
+    pub transcripts: std::collections::BTreeMap<
+        filmcraft_project::ItemId,
+        std::sync::Arc<filmcraft_project::Transcript>,
+    >,
+    pub search_bins: Vec<filmcraft_project::SearchBin>,
+    pub source_graphics:
+        std::collections::BTreeMap<filmcraft_project::ItemId, filmcraft_project::SourceGraphic>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Asset {
     pub id: String,
@@ -14,6 +28,16 @@ pub struct Asset {
     pub height: u32,
     pub bytes: u64,
     pub source_fps: Option<f64>,
+    #[serde(default)]
+    pub duration: Option<f64>,
+    #[serde(default)]
+    pub sample_rate: Option<u32>,
+    #[serde(default)]
+    pub channels: Option<u16>,
+    #[serde(default)]
+    pub source_decoder: String,
+    #[serde(default)]
+    pub native_item: Option<filmcraft_project::ProjectItem>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Clip {
@@ -24,6 +48,14 @@ pub struct Clip {
     pub muted: bool,
     #[serde(default = "unity")]
     pub volume: f64,
+    #[serde(default)]
+    pub start: u32,
+    #[serde(default = "crate::film::video_track")]
+    pub track: u64,
+    #[serde(default = "unity")]
+    pub speed: f64,
+    #[serde(default)]
+    pub reverse: bool,
 }
 fn empty_look() -> Value {
     json!({})
@@ -59,7 +91,41 @@ pub struct Adjustments {
 impl Adjustments {
     pub fn merge(&mut self, v: &Value) -> Result<(), String> {
         let o = v.as_object().ok_or("Justeringar måste vara ett objekt")?;
+        if let Some(patch) = o.get("settings_patch") {
+            fn overlay(base: &mut Value, patch: &Value) {
+                if let (Some(b), Some(p)) = (base.as_object_mut(), patch.as_object()) {
+                    for (key, value) in p {
+                        overlay(b.entry(key).or_insert(Value::Null), value);
+                    }
+                } else {
+                    *base = patch.clone();
+                }
+            }
+            let mut settings =
+                serde_json::to_value(crate::render::settings(self)?).map_err(|e| e.to_string())?;
+            overlay(&mut settings, patch);
+            self.merge(&json!({"settings":settings}))?;
+        }
+        if let Some(v) = o.get("settings") {
+            let d: lightcraft_develop::DevelopSettings =
+                serde_json::from_value(v.clone()).map_err(|e| e.to_string())?;
+            self.exposure = d.light.exposure;
+            self.contrast = d.light.contrast;
+            self.highlights = d.light.highlights;
+            self.shadows = d.light.shadows;
+            self.temperature = (d.wb.temp - 6500.0) / 30.0;
+            self.tint = d.wb.tint;
+            self.saturation = d.color.saturation;
+            self.advanced.clear();
+            self.advanced.insert(
+                "settings".into(),
+                serde_json::to_value(d).map_err(|e| e.to_string())?,
+            );
+        }
         for (input_key, val) in o {
+            if input_key == "settings" || input_key == "settings_patch" {
+                continue;
+            }
             let key = canonical_control_key(input_key).to_owned();
             if key == "treatment" {
                 if !matches!(val.as_str(), Some("color" | "bw")) {
@@ -138,6 +204,9 @@ pub fn supported_control(spec: &lightcraft_develop::ControlSpec) -> bool {
             | Grain
             | Detail
             | Calibration
+            | Optics
+            | Geometry
+            | Profile
     )
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -227,6 +296,47 @@ pub struct Layer {
     pub rotation: f64,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NativeCall {
+    pub command: String,
+    pub params: Value,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PhotoTools {
+    pub foreground: [f32; 4],
+    pub background: [f32; 4],
+    pub brush: photocraft_paint::BrushSettings,
+    pub presets: Vec<photocraft_paint::BrushPreset>,
+    pub mixer: photocraft_paint::mixer::MixerState,
+}
+/// A copied payload is stored only with operations that consume it; the live clipboard is UI state.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct PhotoClipboard {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pixels: Option<std::sync::Arc<Vec<u8>>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bounds: Option<[i32; 4]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<std::sync::Arc<Vec<u8>>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill: Option<photocraft_doc::Fill>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stroke: Option<photocraft_doc::ShapeStroke>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PhotoOperation {
+    pub id: String,
+    pub scope: Scope,
+    pub call: NativeCall,
+    pub target: String,
+    pub selection: Vec<NativeCall>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub context: Vec<NativeCall>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clipboard: Option<PhotoClipboard>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tools: Option<PhotoTools>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Workspace {
     pub mode: String,
     pub scope: String,
@@ -239,6 +349,24 @@ pub struct Workspace {
     pub right_visible: bool,
     #[serde(default)]
     pub pixel_selection: Option<[f64; 4]>,
+    #[serde(default)]
+    pub photo_selection: Vec<NativeCall>,
+    #[serde(default)]
+    pub photo_context: Vec<NativeCall>,
+    #[serde(default)]
+    pub photo_tools: Option<PhotoTools>,
+    #[serde(skip)]
+    pub photo_clipboard: PhotoClipboard,
+    #[serde(default)]
+    pub native_target: Option<String>,
+    #[serde(default)]
+    pub active_mask: Option<u32>,
+    #[serde(default)]
+    pub active_spot: Option<usize>,
+    #[serde(default)]
+    pub active_clip_id: Option<String>,
+    #[serde(default)]
+    pub film_state: filmcraft_engine::EditorState,
 }
 impl Default for Workspace {
     fn default() -> Self {
@@ -253,6 +381,15 @@ impl Default for Workspace {
             left_visible: true,
             right_visible: true,
             pixel_selection: None,
+            photo_selection: vec![],
+            photo_context: vec![],
+            photo_tools: None,
+            photo_clipboard: Default::default(),
+            native_target: None,
+            active_mask: None,
+            active_spot: None,
+            active_clip_id: None,
+            film_state: Default::default(),
         }
     }
 }
@@ -265,13 +402,33 @@ pub struct Project {
     pub height: u32,
     pub fps: FrameRate,
     pub assets: Vec<Asset>,
+    #[serde(default, skip_serializing)]
     pub clips: Vec<Clip>,
+    #[serde(default)]
+    pub timeline: Option<filmcraft_project::Sequence>,
+    #[serde(default)]
+    pub resources: Vec<filmcraft_project::ProjectItem>,
+    #[serde(default = "crate::film::next_native_id")]
+    pub native_next_id: u64,
+    #[serde(default)]
+    pub film_luts: Vec<filmcraft_project::ProjectLut>,
+    #[serde(default)]
+    pub film_library: FilmLibrary,
+    #[serde(default)]
+    pub light_presets: Vec<lightcraft_develop::Preset>,
+    #[serde(default)]
+    pub develop_clipboard: Option<Value>,
     pub adjustments: Vec<Adjustment>,
     #[serde(default = "empty_look")]
     pub project_look: Value,
     pub layers: Vec<Layer>,
+    #[serde(default)]
+    pub photo_operations: Vec<PhotoOperation>,
     pub workspace: Workspace,
     pub next_id: u64,
+    /// Legacy projects retain source-only grading; new projects grade the shared canvas.
+    #[serde(default)]
+    pub develop_canvas: bool,
 }
 impl Default for Project {
     fn default() -> Self {
@@ -284,11 +441,20 @@ impl Default for Project {
             fps: FrameRate::FPS_25,
             assets: vec![],
             clips: vec![],
+            timeline: Some(crate::film::empty_sequence(1280, 720, FrameRate::FPS_25)),
+            resources: vec![],
+            native_next_id: crate::film::next_native_id(),
+            film_luts: vec![],
+            film_library: FilmLibrary::default(),
+            light_presets: vec![],
+            develop_clipboard: None,
             adjustments: vec![],
             project_look: json!({}),
             layers: vec![],
+            photo_operations: vec![],
             workspace: Workspace::default(),
             next_id: 1,
+            develop_canvas: true,
         }
     }
 }
@@ -299,17 +465,39 @@ impl Project {
         id
     }
     pub fn frames(&self) -> u32 {
-        self.clips.iter().map(|c| c.frames).sum()
+        self.timeline
+            .as_ref()
+            .map(|s| self.fps.frame_at(s.duration()).max(0) as u32)
+            .unwrap_or_else(|| self.clips.iter().map(|c| c.frames).sum())
     }
     pub fn at(&self, global: u32) -> Option<(&Clip, u32)> {
-        let mut offset = 0;
-        for c in &self.clips {
-            if global >= offset && global < offset + c.frames {
-                return Some((c, global - offset));
-            }
-            offset += c.frames;
+        let covers = |c: &&Clip| {
+            global >= c.start
+                && global < c.start + c.frames
+                && !self
+                    .assets
+                    .iter()
+                    .find(|a| a.id == c.asset_id)
+                    .and_then(|a| a.native_item.as_ref())
+                    .is_some_and(|i| {
+                        matches!(i.kind, filmcraft_project::ItemKind::AdjustmentLayer { .. })
+                    })
+        };
+        if let Some(id) = &self.workspace.active_clip_id
+            && let Some(c) = self.clips.iter().filter(covers).find(|c| &c.id == id)
+        {
+            return Some((c, global - c.start));
         }
-        None
+        self.clips
+            .iter()
+            .filter(covers)
+            .max_by_key(|c| {
+                self.timeline
+                    .as_ref()
+                    .and_then(|s| s.video_tracks.iter().position(|t| t.id.0 == c.track))
+                    .unwrap_or(0)
+            })
+            .map(|c| (c, global - c.start))
     }
     pub fn scope(&self) -> Result<Scope, String> {
         let (c, f) = self
@@ -364,8 +552,36 @@ impl Project {
             || self.clips.len() > 1000
             || self.layers.len() > 500
             || self.adjustments.len() > 5000
+            || self.photo_operations.len() > 2000
+            || self.workspace.photo_selection.len() > 200
+            || self.workspace.photo_context.len() > 500
         {
             return Err("Projektet har för många objekt".into());
+        }
+        if self
+            .workspace
+            .photo_context
+            .iter()
+            .any(|c| !crate::native::context_command(&c.command))
+        {
+            return Err("Ogiltigt verktygstillstånd".into());
+        }
+        for t in self.workspace.photo_tools.iter().chain(
+            self.photo_operations
+                .iter()
+                .filter_map(|o| o.tools.as_ref()),
+        ) {
+            if t.presets.len() > 1024
+                || !t.brush.size.is_finite()
+                || !(0.01..=4096.0).contains(&t.brush.size)
+                || !t.brush.spacing.is_finite()
+                || !(0.001..=10.0).contains(&t.brush.spacing)
+                || [t.brush.hardness, t.brush.opacity, t.brush.flow]
+                    .iter()
+                    .any(|v| !v.is_finite() || !(0.0..=1.0).contains(v))
+            {
+                return Err("Ogiltiga penselinställningar".into());
+            }
         }
         let mut ids = std::collections::HashSet::new();
         for id in self
@@ -379,7 +595,6 @@ impl Project {
                 return Err("Projektet har dubbla eller tomma identifierare".into());
             }
         }
-        let mut frames = 0_u32;
         for c in &self.clips {
             if !self.assets.iter().any(|a| a.id == c.asset_id)
                 || c.frames == 0
@@ -389,7 +604,8 @@ impl Project {
             {
                 return Err("Klippet har ogiltig media eller varaktighet".into());
             }
-            frames = frames
+            let _end = c
+                .start
                 .checked_add(c.frames)
                 .filter(|&f| f <= MAX_FRAMES)
                 .ok_or("Tidslinjen är för lång")?;
@@ -399,15 +615,31 @@ impl Project {
             .iter()
             .map(|e| &e.scope)
             .chain(self.layers.iter().map(|l| &l.scope))
+            .chain(self.photo_operations.iter().map(|l| &l.scope))
             .chain(self.workspace.selection.iter())
         {
             if !self
                 .clips
                 .iter()
                 .any(|c| c.id == s.clip_id && s.start < s.end && s.end <= c.frames)
+                && !self
+                    .resources
+                    .iter()
+                    .filter_map(|i| i.as_sequence())
+                    .any(|seq| {
+                        seq.video_tracks.iter().flat_map(|t| &t.items).any(|c| {
+                            format!("clip-{}", c.id.0) == s.clip_id
+                                && s.start < s.end
+                                && i64::from(s.end) <= seq.settings.frame_rate.frame_at(c.duration)
+                        })
+                    })
             {
                 return Err("Redigeringens intervall ligger utanför klippet".into());
             }
+        }
+        let frames = self.frames();
+        if frames > MAX_FRAMES {
+            return Err("Tidslinjen är för lång".into());
         }
         if frames > 0 && self.workspace.playhead >= frames {
             return Err("Tidspositionen ligger utanför projektet".into());
@@ -426,14 +658,62 @@ impl Project {
             return Err("Det valda lagret finns inte".into());
         }
         for a in &self.assets {
-            if !["image", "video", "blank"].contains(&a.kind.as_str())
+            if !["image", "video", "blank", "audio", "generator"].contains(&a.kind.as_str())
                 || a.width == 0
                 || a.height == 0
                 || a.width > 32768
                 || a.height > 32768
+                || a.source_fps
+                    .is_some_and(|f| !f.is_finite() || !(1.0..=240.0).contains(&f))
+                || a.duration.is_some_and(|f| !f.is_finite() || f <= 0.0)
+                || a.sample_rate.is_some_and(|f| !(8000..=192000).contains(&f))
+                || a.channels.is_some_and(|c| c == 0 || c > 6)
                 || u64::from(a.width) * u64::from(a.height) > 16_777_216
             {
                 return Err("Ogiltig medietillgång".into());
+            }
+        }
+        if let Some(t) = &self.timeline {
+            t.settings.validate()?;
+            if t.settings.frame_rate != self.fps
+                || !(8000..=192000).contains(&t.settings.sample_rate)
+            {
+                return Err("Ogiltigt tidsformat".into());
+            }
+            if t.settings.width != self.width
+                || t.settings.height != self.height
+                || t.all_tracks().count() > 64
+                || t.all_tracks().any(|tr| {
+                    tr.items.len() > 1000
+                        || tr.transitions.len() > 1000
+                        || tr.items.iter().any(|i| {
+                            i.start.0 < 0
+                                || i.duration.0 <= 0
+                                || !i.speed.is_finite()
+                                || i.speed.abs() > 100.0
+                        })
+                })
+            {
+                return Err("Ogiltig tidslinje".into());
+            }
+        }
+        for op in &self.photo_operations {
+            if !crate::native::supported("photo", &op.call.command)
+                || op.context.len() > 500
+                || op
+                    .context
+                    .iter()
+                    .any(|c| !crate::native::context_command(&c.command))
+                || op
+                    .clipboard
+                    .as_ref()
+                    .is_some_and(|c| c.pixels.as_ref().is_some_and(|v| v.len() > 16_000_000))
+                || op
+                    .selection
+                    .iter()
+                    .any(|c| !c.command.starts_with("select."))
+            {
+                return Err("Ogiltig bildoperation".into());
             }
         }
         Adjustments::default().merge(&self.project_look)?;
@@ -524,14 +804,40 @@ impl Project {
             .at(self.workspace.playhead)
             .map(|(c, f)| (Some(c), f))
             .unwrap_or((None, 0));
-        json!({ "project": self, "total_frames": self.frames(), "active_clip": clip, "local_frame": local,
+        let mut project = serde_json::to_value(self).unwrap_or(Value::Null);
+        project["clips"] = json!(self.clips);
+        let mut look = clip
+            .map(|c| serde_json::to_value(self.look(&c.id, local)).unwrap_or(Value::Null))
+            .unwrap_or_else(|| json!({}));
+        if let Some(c) = clip
+            && let Ok(settings) = crate::render::settings(&self.look(&c.id, local))
+        {
+            for spec in lightcraft_develop::CONTROLS
+                .iter()
+                .filter(|c| supported_control(c))
+            {
+                if let Some(n) = lightcraft_develop::controls::get(&settings, spec.id) {
+                    look[canonical_control_key(spec.id)] = json!(n);
+                }
+            }
+            look["treatment"] = json!(settings.treatment);
+            for (k, points) in [
+                ("master", &settings.curve.master),
+                ("red", &settings.curve.red),
+                ("green", &settings.curve.green),
+                ("blue", &settings.curve.blue),
+            ] {
+                look[format!("curve.{k}")] = json!(points);
+            }
+        }
+        json!({ "project": project, "total_frames": self.frames(), "active_clip": clip, "local_frame": local,
             "seconds": self.fps.tick_of(i64::from(self.workspace.playhead)).seconds(),
-            "source_seconds": clip.map(|c| self.fps.tick_of(i64::from(c.source_in + local)).seconds()),
-            "look": clip.map(|c| self.look(&c.id, local)), "ticks_per_second": filmcraft_time::TICKS_PER_SECOND,
+            "source_seconds": clip.map(|c| self.fps.tick_of(i64::from(c.source_in)).seconds() + f64::from(if c.reverse { c.frames.saturating_sub(1 + local) } else { local }) / self.fps.as_f64() * c.speed.abs()),
+            "look": look, "ticks_per_second": filmcraft_time::TICKS_PER_SECOND,
             "frame_ticks": self.fps.frame_duration(), "duration_ticks": self.fps.tick_of(i64::from(self.frames())),
             "develop_controls": lightcraft_develop::CONTROLS.iter().filter(|c| supported_control(c)).collect::<Vec<_>>(),
             "blend_modes": photocraft_doc::BlendMode::LAYER_MODES.iter().map(|b| json!({"id":b,"label":b.label()})).collect::<Vec<_>>(),
-            "render_backend": "PhotoCraft compose/paint/text + LightCraft pipeline + FilmCraft edit/time" })
+            "render_backend": "PhotoCraft engine/compose + LightCraft engine/pipeline + FilmCraft engine/render/audio" })
     }
     pub fn tick_at(&self, frame: u32) -> Tick {
         self.fps.tick_of(i64::from(frame))

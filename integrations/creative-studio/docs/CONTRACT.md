@@ -6,17 +6,20 @@
 
 | Fält | Betydelse |
 |---|---|
-| `assets[]` | Stabilt id, namn, image/video/blank, dimensioner, byteantal, eventuell käll-fps. Mediapixlar finns separat i IndexedDB med samma id. |
-| `clips[]` | Stabilt id, asset-id, antal bildrutor, källans in-punkt i projektbildrutor, ljud av/på. Arrayordningen ger den första versionens enda sekventiella spår. |
+| `assets[]` | Stabilt id, namn, image/video/audio/blank/generator, dimensioner, byteantal, käll-fps och avkodarval. Grafik och nästlade sekvenser är generatorreferenser; originalmedia finns separat i IndexedDB med samma id. |
+| `timeline` | Auktoritativ FilmCraft-sekvens med separata video-/ljudspår, klipp, in-punkter, effekter, keyframes och övergångar. |
+| `clips[]` i inspect | Härledd UI-projektion med stabilt id, asset-id, explicit start/spår, antal bildrutor, källans in-punkt, speed/reverse och ljud. Sparas inte som en andra tidsstruktur. |
 | `fps` | FilmCraft `FrameRate`: rationella heltal `num` och `den`, 1–120 fps. |
 | `layers[]` | Id, namn, synlighet, opacitet, scope och ordnade pensel-/suddoperationer. |
 | `adjustments[]` | Ett scope och partiella fotografiska parametrar. Samma scope uppdaterar samma operation; ingen kopia per bildruta. |
+| `photo_operations[]` | Originalkommando, parametrar, stabilt mållager, spatial markering, kontext, verktygsinställningar, eventuellt urklipp och tidsmässigt scope. |
+| `project_look` | Sparsamma projektjusteringar; globala ändringar bevarar lokala masker och klippjusteringar. |
 | `workspace` | Läge, omfattning, spelhuvud, vald markering/lager, panelsynlighet och tidslinjehöjd. |
 | `width`, `height` | Gemensam renderingsstorlek. Media anpassas proportionellt med transparenta marginaler. |
 
 Ett scope är `{clip_id, start, end}` med `0 <= start < end <= clip.frames`. **Start inkluderas; end exkluderas.** UI visar den sista inkluderade bildrutan som `end - 1`. Identiteten hos en källbildruta är asset-id plus källindex; den globala bildrutan är dess tidsposition i den aktuella sekvensen.
 
-Penselpunkter är normaliserade `[x, y, pressure]`, färg är raka RGBA-komponenter 0–1 och penselstorlek är andel av canvasbredden. Lager renderas i arrayordning ovanpå framkallat original. Framkallningsoperationer i överlappande intervall evalueras i operationsordning; sista explicit satta värdet per parameter vinner. Temperatur/nyans/mättnad/etc är samma parametrar för samtliga bildrutor i omfattningen, utan automatisk variation.
+Gemensamma penselpunkter är normaliserade `[x, y, pressure]`, färg är raka RGBA-komponenter 0–1 och penselstorlek är andel av canvasbredden. Native PhotoCraft-kommandon använder originalets dokumentpixlar och egna dokumenterade enheter. Canvasadaptern inverterar framkallningsgeometri och klippmotion före ett penseldrag. Lager och bildoperationer komponerar samma bild; nya projekt framkallar därefter den komponerade canvasen. `develop_canvas` har ett kompatibelt standardvärde för äldre filer som använde den tidigare ordningen. Framkallningsoperationer i överlappande intervall evalueras i operationsordning; sista explicit satta värdet per parameter vinner. Temperatur/nyans/mättnad/etc är samma parametrar för samtliga bildrutor i omfattningen, utan automatisk variation.
 
 ## WASM-API
 
@@ -45,7 +48,7 @@ Penselpunkter är normaliserade `[x, y, pressure]`, färg är raka RGBA-komponen
 
 View, seek och selection skapar ingen innehållshistorik. Innehållskommandon gör det. Sparade snapshots innehåller också workspace-state; undo/redo bevarar dock aktuell presentation och reparerar ogiltiga innehållsval.
 
-Workern använder meddelanden `{id, op, ...params}` och svarar `{id, result}` eller `{id, error}`. Renderingsbuffertar överförs som transferable ArrayBuffer. Inga medie-original skickas in i WASM. UI kan aldrig mutera motorns projekt genom att ändra ett `inspect`-svar.
+Workern använder meddelanden `{id, op, ...params}` och svarar `{id, result}` eller `{id, error}`. Renderingsbuffertar överförs som transferable ArrayBuffer. Original finns som Blob-referenser i arbetaren; native avkodare får begränsade byteintervall via Blob.slice. Originalfilm läses inte som en hel ArrayBuffer. UI kan aldrig mutera motorns projekt genom att ändra ett `inspect`-svar.
 
 Backupformatet har åtta ASCII-byte `CSTUDIO1`, fyra byte big-endian headerlängd, UTF-8 JSON-header `{json, media:[{id,size,type}]}` och därefter respektive originalmedia. Längder valideras före Blob-slicing. Backupen kräver samtliga original; saknade original måste återlänkas först.
 
@@ -89,3 +92,41 @@ Backupformatet har åtta ASCII-byte `CSTUDIO1`, fyra byte big-endian headerläng
   `layer.move {id,index}` flyttar lagret i den globala lagerarrayen.
 - Nya fält har serde-standarder. Tidigare versioners projekt, historik och
   backupformat fungerar fortsatt, med samma schemanummer 1.
+
+## 0.4 — fulla motoradaptrar och en gemensam sekvens
+
+- Vid öppning härleds en FilmCraft-sekvens från äldre sekventiella `clips` när
+  `timeline` saknas. Sekvensen blir därefter den sparade tidsstrukturen.
+  `resources`, `film_library`, generatorer, nästlade sekvenser och `film_luts`
+  tillhör samma projekt. Filmkommandon räknar om klipp-/bildoperationernas scopes
+  efter source-in, speed/reverse, razor, trim och nästling.
+- `native_catalog()` ger originalens PhotoCraft-, LightCraft- och
+  FilmCraft-specifikationer samt effektdefinitioner. `connected` anger adapterns
+  kommandofamilj, inte en garanti att alla externa resurser finns i browsern.
+- `execute_pixels(engine, command, payloadJson, width, height, frame, rgba8)`
+  använder `payloadJson = {params, scope?}`. Bildredigering kräver bildruta,
+  intervall eller klipp; lokala masker/geometri kan inte tyst utökas till projekt.
+  LightCraft kan göra globala färgjusteringar med projektomfattning.
+  Resultatet inkluderar `native_result` och `content_changed`; en query eller
+  spatial markering skapar inte en innehållspost i gemensam undo/redo.
+- `execute_film(command, paramsJson)` manipulerar samma sekvens. FilmCrafts
+  strukturella klippkommandon omfattar hela de angivna klippen. Verktygspanelen
+  beskriver detta uttryckligen. `clip.move {id,index}` är fortfarande en bekväm
+  sekventiell adapter; spår och luckor använder `timeline.move`.
+- Native mållager har stabila alias: `source`, `original:index`, gemensamt
+  lager-ID eller `photo-op-ID:index`. Parametrar refererar till dem som `@alias`.
+  Både aktivt mål och explicita lagerreferenser måste täcka vald tidsomfattning.
+  Borttagning av ett gemensamt lager tar även bort beroende native operationer;
+  undo återställer hela ändringen atomiskt.
+- `native_view()` visar samma tidsberoende lager och spatiala markering.
+  `canvas_coordinates()` översätter mellan visad canvas, källbild,
+  PhotoCraft-dokument och LightCraft-geometri. UI lagrar ingen annan bildmodell.
+- `frame_plan`/`clip_plan` och `render_sequence`/`render_clip_sequence` hämtar
+  exakt de originaltider som behövs och använder den riktiga flerspårsrenderaren.
+  `audio_plan`/`mix_audio` använder begränsade PCM-fönster och FilmCrafts mixer.
+- `probe_media`, `decode_media_frame` och `decode_media_audio` använder
+  originalmotorernas avkodare och range-läsning. `forget_media` invaliderar
+  cache efter återlänkning. Original behålls utanför projekt-JSON och historik.
+- `encode_video_begin`/`encode_video_frame`/`encode_video_end` strömmar
+  FilmCrafts H.264 när browsern saknar kodaren. Tillfällig kodarstate sparas
+  aldrig i projektet. Samma renderade bildrutor och ljudmix når WebM och MP4.

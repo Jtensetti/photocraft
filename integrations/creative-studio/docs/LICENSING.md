@@ -10,14 +10,14 @@ Creative Studio kopierar inga upstream-logotyper, appikoner, skärmbilder, över
 
 ## Webb- och Rust-beroenden
 
-MP4Box.js använder BSD-3-Clause och webm-muxer MIT. Deras kompletta texter ingår i `public/licenses/`. Rust-låsfilens beroenden använder permissiva MIT/Apache/BSD/Zlib/Unlicense/0BSD-alternativ; ett paket kombinerar MIT/Apache med Unicode-3.0. `scripts/license-notices.py` samlar tillgängliga kompletta licenstexter och SPDX-information från exakt `cargo metadata --locked`, samt licenser för de två bundlade npm-runtimebiblioteken. Den genererade manifestfilen anger också utvecklingsberoenden som inte nödvändigtvis länkas in i WASM; inkluderingen är avsiktligt försiktig.
+MP4Box.js använder BSD-3-Clause; webm-muxer och mp4-muxer använder MIT. Symphonias ljudavkodare använder MPL-2.0 och är återanvända utan källändringar. Deras kompletta texter ingår i `public/licenses/`. Den låsta Rust-grafen innehåller också MIT/Apache/BSD/Zlib/ISC/Unlicense-alternativ, Unicode-, IJG-, NCSA- och CDLA-texter. `scripts/license-notices.py` samlar tillgängliga kompletta licenstexter och SPDX-information från exakt `cargo metadata --locked`, samt licenser för de tre bundlade npm-runtimebiblioteken. Den genererade manifestfilen anger även paket som inte nödvändigtvis länkas in i WASM.
 
-Kör insamlingen efter ändring av låsfiler och publicera `dist/licenses/` tillsammans med produkten. Kontrollera eventuella nya tillgångar (typsnitt, ikoner, exempelmedia) och nya codec-bibliotek innan de kopieras. Denna version använder systemtypsnitt och egen demo; ingen codec från ArtCraft Services återanvänds.
+Kör insamlingen efter ändring av låsfiler och publicera `dist/licenses/` tillsammans med produkten. Denna version använder systemtypsnitt i UI, PhotoCrafts bundlade texttypsnitt, Lucide-verktygsikoner och en public-domain-demobild; se `ATTRIBUTION.md`. Codec-biblioteken kommer från de låsta öppna originalmotorerna, inte ArtCraft Services.
 
 ## ArtCraft Services och medieformat
 
 ArtCraft Services har andra, begränsande fair-source-villkor och ingår inte i koden eller beroendegrafen. Inga AI-, konto- eller betalningsfunktioner har återanvänts.
 
-Browserstöd för avkodning innebär inte automatiskt en bedömning av alla patent-/distributionsvillkor kring H.264/AAC. Den egna videoexporten använder VP9/Opus WebM. Om ytterligare codec-implementationer eller native-binära paket senare distribueras behövs en förnyad licens- och formatgranskning för den faktiska distributionen.
+Browserstöd för avkodning innebär inte automatiskt en bedömning av alla patent-/distributionsvillkor kring H.264/AAC. Export stöder VP9/Opus WebM och H.264 MP4; MP4 använder browserkodare eller FilmCrafts egen H.264-kodare med originalets MIT/Apache-notices. Ljud är AAC eller Opus beroende på browserstöd. Filen dokumenterar kodlicenser och implementation, inte en separat codec-patentbedömning.
 
 Den här filen dokumenterar teknikval och bevarade notices; den ersätter inte en eventuell juridisk granskning av kommersiell publicering.

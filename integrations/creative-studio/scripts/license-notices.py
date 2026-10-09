@@ -38,6 +38,13 @@ for package in sorted(metadata["packages"], key=lambda p: (p["name"], p["version
             break
     if not licenses:
         raise RuntimeError(f'No license text found for {name}; inspect before publishing')
+    if package['name'] == 'photocraft-text':
+        fonts = Path(package['manifest_path']).parent.parent.parent / 'assets/fonts'
+        for source in fonts.rglob('*'):
+            if source.is_file() and source.name.upper().startswith(('LICENSE', 'OFL')):
+                destination = output / name / ('font-' + source.parent.name + '-' + source.name)
+                shutil.copyfile(source, destination)
+                licenses.append(f'rust/{name}/{destination.name}')
     manifest.append({"name": package["name"], "version": package["version"],
                      "license": package.get("license"), "source": package["source"], "texts": licenses})
 for package in ["mp4box", "webm-muxer"]:

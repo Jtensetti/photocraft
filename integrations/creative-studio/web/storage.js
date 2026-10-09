@@ -47,3 +47,13 @@ export async function readBackup(file) {
   if(offset !== file.size) throw new Error('Säkerhetskopian har oväntade data');
   return {json:header.json,parts};
 }
+
+// One IndexedDB transaction: a quota failure restores every original unchanged.
+export async function putMediaBatch(parts){
+  const db=await ready;
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction('media','readwrite'),store=tx.objectStore('media');
+    tx.oncomplete=resolve;tx.onerror=tx.onabort=()=>reject(new Error(tx.error?.name==='QuotaExceededError'?'Lagringsutrymmet är fullt. Inga original återställdes.':'Originalen kunde inte återställas.'));
+    try{for(const part of parts)store.put(part.blob,part.id);}catch(error){tx.abort();reject(error);}
+  });
+}

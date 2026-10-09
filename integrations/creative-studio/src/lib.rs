@@ -7,6 +7,7 @@
     clippy::unimplemented
 )]
 
+mod film;
 pub mod model;
 mod render;
 use model::*;
@@ -117,7 +118,10 @@ impl Studio {
             };
             if let Some(p) = from.pop() {
                 to.push(self.project.clone());
+                let workspace = self.project.workspace.clone();
                 self.project = p;
+                self.project.workspace = workspace;
+                self.repair_view();
             }
             self.trim_history()?;
             return Ok(());
@@ -161,6 +165,7 @@ impl Studio {
                     frames,
                     source_in: 0,
                     muted: false,
+                    volume: 1.0,
                 });
                 p.assets.push(asset);
                 p.workspace.selected_layer = None;
@@ -205,19 +210,37 @@ impl Studio {
             }
             "develop.set" => {
                 Adjustments::default().merge(&v["values"])?;
-                let scope = p.scope()?;
-                // A gesture updates one shared operation. Move it last so overlap ordering is explicit.
-                let mut values = json!({});
-                if let Some(i) = p.adjustments.iter().position(|a| a.scope == scope) {
-                    values = p.adjustments.remove(i).values;
+                if v["scope"].as_str() == Some("project")
+                    || (v.get("scope").is_none() && p.workspace.scope == "project")
+                {
+                    for (key, value) in v["values"].as_object().ok_or("Ogiltiga justeringar")? {
+                        p.project_look[key] = value.clone();
+                    }
+                } else {
+                    let scope = target_scope(&p, v)?;
+                    // A gesture updates one shared operation. Move it last so overlap ordering is explicit.
+                    let mut values = json!({});
+                    if let Some(i) = p.adjustments.iter().position(|a| a.scope == scope) {
+                        values = p.adjustments.remove(i).values;
+                    }
+                    for (k, n) in v["values"].as_object().ok_or("Ogiltiga justeringar")? {
+                        values[k] = n.clone();
+                    }
+                    p.adjustments.push(Adjustment { scope, values });
                 }
-                for (k, n) in v["values"].as_object().ok_or("Ogiltiga justeringar")? {
-                    values[k] = n.clone();
+            }
+            "develop.reset" => {
+                if v["scope"].as_str() == Some("project")
+                    || (v.get("scope").is_none() && p.workspace.scope == "project")
+                {
+                    p.project_look = json!({});
+                } else {
+                    let scope = target_scope(&p, v)?;
+                    p.adjustments.retain(|a| a.scope != scope);
                 }
-                p.adjustments.push(Adjustment { scope, values });
             }
             "layer.new" => {
-                let scope = p.scope()?;
+                let scope = target_scope(&p, v)?;
                 let id = p.id("layer");
                 p.layers.push(Layer {
                     id: id.clone(),
@@ -231,18 +254,38 @@ impl Studio {
                     opacity: 1.0,
                     visible: true,
                     strokes: vec![],
+                    mask: None,
+                    text: None,
+                    offset: [0.0, 0.0],
+                });
+                p.workspace.selected_layer = Some(id);
+            }
+            "layer.text" => {
+                let scope = target_scope(&p, v)?;
+                let text: Text =
+                    serde_json::from_value(v["text"].clone()).map_err(|e| e.to_string())?;
+                let id = p.id("layer");
+                p.layers.push(Layer {
+                    id: id.clone(),
+                    name: text.content.chars().take(80).collect(),
+                    scope,
+                    opacity: 1.0,
+                    visible: true,
+                    strokes: vec![],
+                    mask: None,
+                    offset: [0.0, 0.0],
+                    text: Some(text),
                 });
                 p.workspace.selected_layer = Some(id);
             }
             "layer.stroke" => {
                 let stroke: Stroke =
                     serde_json::from_value(v["stroke"].clone()).map_err(|e| e.to_string())?;
-                let target_scope = p.scope()?;
+                let target_scope = target_scope(&p, v)?;
                 let selected = p.workspace.selected_layer.clone();
-                let index = p
-                    .layers
-                    .iter()
-                    .position(|l| Some(&l.id) == selected.as_ref() && l.scope == target_scope);
+                let index = p.layers.iter().position(|l| {
+                    Some(&l.id) == selected.as_ref() && l.scope == target_scope && l.text.is_none()
+                });
                 let index = match index {
                     Some(i) => i,
                     None => {
@@ -255,6 +298,9 @@ impl Studio {
                             opacity: 1.0,
                             visible: true,
                             strokes: vec![],
+                            mask: None,
+                            text: None,
+                            offset: [0.0, 0.0],
                         });
                         p.layers.len() - 1
                     }
@@ -272,6 +318,18 @@ impl Studio {
                 if let Some(b) = v["visible"].as_bool() {
                     l.visible = b;
                 }
+                if let Some(text) = v.get("text") {
+                    l.text = Some(serde_json::from_value(text.clone()).map_err(|e| e.to_string())?);
+                }
+                if let Some(n) = v["name"].as_str() {
+                    l.name = n.chars().take(200).collect();
+                }
+                if let Some(r) = v.get("mask") {
+                    l.mask = serde_json::from_value(r.clone()).map_err(|e| e.to_string())?;
+                }
+                if let Some(r) = v.get("offset") {
+                    l.offset = serde_json::from_value(r.clone()).map_err(|e| e.to_string())?;
+                }
                 if let Some(n) = v["opacity"].as_f64() {
                     l.opacity = n as f32;
                 }
@@ -280,6 +338,97 @@ impl Studio {
                 let id = string(v, "id")?;
                 p.layers.retain(|l| l.id != id);
                 p.workspace.selected_layer = None;
+            }
+            "layer.scope" => {
+                let id = string(v, "id")?;
+                let layer = p
+                    .layers
+                    .iter_mut()
+                    .find(|l| l.id == id)
+                    .ok_or("Lagret finns inte")?;
+                layer.scope.start = integer(v, "start")?;
+                layer.scope.end = integer(v, "end")?;
+            }
+            "clip.volume" => {
+                let id = string(v, "id")?;
+                let clip = p
+                    .clips
+                    .iter_mut()
+                    .find(|c| c.id == id)
+                    .ok_or("Klippet finns inte")?;
+                clip.volume = v["volume"].as_f64().ok_or("Ogiltig volym")?;
+            }
+            "clip.move" => {
+                let id = string(v, "id")?;
+                let target = integer(v, "index")? as usize;
+                if target >= p.clips.len() {
+                    return Err("Ogiltig klipposition".into());
+                }
+                let index = p
+                    .clips
+                    .iter()
+                    .position(|c| c.id == id)
+                    .ok_or("Klippet finns inte")?;
+                let active = p.at(p.workspace.playhead).map(|(c, f)| (c.id.clone(), f));
+                let clip = p.clips.remove(index);
+                p.clips.insert(target, clip);
+                if let Some((active_id, local)) = active {
+                    let offset: u32 = p
+                        .clips
+                        .iter()
+                        .take_while(|c| c.id != active_id)
+                        .map(|c| c.frames)
+                        .sum();
+                    p.workspace.playhead = offset + local;
+                }
+            }
+            "clip.trim" => {
+                let id = string(v, "id")?;
+                let start = integer(v, "start")?;
+                let end = integer(v, "end")?;
+                let clip = p
+                    .clips
+                    .iter_mut()
+                    .find(|c| c.id == id)
+                    .ok_or("Klippet finns inte")?;
+                if start >= end || end > clip.frames {
+                    return Err("Trimningen måste behålla minst en bildruta inom klippet".into());
+                }
+                let (source_in, frames) = film::trim(clip, p.fps, start, end)?;
+                clip.source_in = source_in;
+                clip.frames = frames;
+                p.layers.retain(|l| {
+                    l.scope.clip_id != id || l.scope.start < end && l.scope.end > start
+                });
+                p.adjustments.retain(|l| {
+                    l.scope.clip_id != id || l.scope.start < end && l.scope.end > start
+                });
+                for scope in p
+                    .layers
+                    .iter_mut()
+                    .map(|l| &mut l.scope)
+                    .chain(p.adjustments.iter_mut().map(|l| &mut l.scope))
+                {
+                    if scope.clip_id == id {
+                        scope.start = scope.start.max(start) - start;
+                        scope.end = scope.end.min(end) - start;
+                    }
+                }
+                let offset: u32 = p
+                    .clips
+                    .iter()
+                    .take_while(|c| c.id != id)
+                    .map(|c| c.frames)
+                    .sum();
+                p.workspace.playhead = offset;
+                p.workspace.selection = None;
+                if !p
+                    .layers
+                    .iter()
+                    .any(|l| Some(&l.id) == p.workspace.selected_layer.as_ref())
+                {
+                    p.workspace.selected_layer = None;
+                }
             }
             "clip.mute" => {
                 let id = string(v, "id")?;
@@ -399,6 +548,28 @@ impl Studio {
         Ok(())
     }
 
+    fn repair_view(&mut self) {
+        let p = &mut self.project;
+        p.workspace.playhead = p.workspace.playhead.min(p.frames().saturating_sub(1));
+        if p.workspace.selection.as_ref().is_some_and(|s| {
+            !p.clips
+                .iter()
+                .any(|c| c.id == s.clip_id && s.end <= c.frames)
+        }) {
+            p.workspace.selection = None;
+            if p.workspace.scope == "range" {
+                p.workspace.scope = "frame".into();
+            }
+        }
+        if !p
+            .layers
+            .iter()
+            .any(|l| Some(&l.id) == p.workspace.selected_layer.as_ref())
+        {
+            p.workspace.selected_layer = None;
+        }
+    }
+
     fn trim_history(&mut self) -> Result<(), String> {
         let undo_sizes: Vec<_> = self
             .undo
@@ -437,4 +608,12 @@ fn integer(v: &Value, k: &str) -> Result<u32, String> {
     v[k].as_u64()
         .and_then(|n| u32::try_from(n).ok())
         .ok_or_else(|| format!("{k} måste vara ett positivt heltal"))
+}
+
+fn target_scope(p: &Project, v: &Value) -> Result<Scope, String> {
+    if let Some(scope) = v.get("scope") {
+        serde_json::from_value(scope.clone()).map_err(|_| "Ogiltig redigeringsomfattning".into())
+    } else {
+        p.scope()
+    }
 }

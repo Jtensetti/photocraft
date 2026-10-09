@@ -12,3 +12,5 @@
 
 The generated public/licenses/dependencies.json contains the locked Rust dependency
 manifest and associated license texts. Upstream brand/icon assets are excluded.
+
+PhotoCraft text uses bundled Inter and JetBrains Mono font data under SIL OFL. Full font notices are collected under public/licenses/rust/photocraft-text-0.5.0 by the build script. FilmCraft project/edit are derived transient adapters at the same pinned upstream revision.

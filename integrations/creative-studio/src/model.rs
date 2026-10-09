@@ -22,7 +22,17 @@ pub struct Clip {
     pub frames: u32,
     pub source_in: u32,
     pub muted: bool,
+    #[serde(default = "unity")]
+    pub volume: f64,
 }
+fn empty_look() -> Value {
+    json!({})
+}
+
+fn unity() -> f64 {
+    1.0
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Scope {
     pub clip_id: String,
@@ -85,6 +95,13 @@ pub struct Stroke {
     pub erase: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Text {
+    pub content: String,
+    pub size: f32,
+    pub color: [f32; 4],
+    pub position: [f64; 2],
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Layer {
     pub id: String,
     pub name: String,
@@ -92,6 +109,12 @@ pub struct Layer {
     pub opacity: f32,
     pub visible: bool,
     pub strokes: Vec<Stroke>,
+    #[serde(default)]
+    pub mask: Option<[f64; 4]>,
+    #[serde(default)]
+    pub text: Option<Text>,
+    #[serde(default)]
+    pub offset: [f64; 2],
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Workspace {
@@ -131,6 +154,8 @@ pub struct Project {
     pub assets: Vec<Asset>,
     pub clips: Vec<Clip>,
     pub adjustments: Vec<Adjustment>,
+    #[serde(default = "empty_look")]
+    pub project_look: Value,
     pub layers: Vec<Layer>,
     pub workspace: Workspace,
     pub next_id: u64,
@@ -147,6 +172,7 @@ impl Default for Project {
             assets: vec![],
             clips: vec![],
             adjustments: vec![],
+            project_look: json!({}),
             layers: vec![],
             workspace: Workspace::default(),
             next_id: 1,
@@ -192,6 +218,7 @@ impl Project {
                 .selection
                 .clone()
                 .ok_or("Markera ett intervall först".into()),
+            "project" => Err("Projektomfattning stöds av framkallning. Välj bildruta, intervall eller klipp för lager.".into()),
             _ => Err("Ogiltig omfattning".into()),
         }
     }
@@ -202,6 +229,7 @@ impl Project {
                 let _ = a.merge(&edit.values);
             }
         }
+        let _ = a.merge(&self.project_look);
         a
     }
     pub fn validate(&self) -> Result<(), String> {
@@ -242,6 +270,8 @@ impl Project {
         for c in &self.clips {
             if !self.assets.iter().any(|a| a.id == c.asset_id)
                 || c.frames == 0
+                || !c.volume.is_finite()
+                || !(0.0..=1.0).contains(&c.volume)
                 || c.source_in > MAX_FRAMES
             {
                 return Err("Klippet har ogiltig media eller varaktighet".into());
@@ -270,7 +300,7 @@ impl Project {
             return Err("Tidspositionen ligger utanför projektet".into());
         }
         if !["photo", "light", "film"].contains(&self.workspace.mode.as_str())
-            || !["frame", "range", "clip"].contains(&self.workspace.scope.as_str())
+            || !["frame", "range", "clip", "project"].contains(&self.workspace.scope.as_str())
         {
             return Err("Ogiltigt verktygsläge eller omfattning".into());
         }
@@ -293,11 +323,42 @@ impl Project {
                 return Err("Ogiltig medietillgång".into());
             }
         }
+        Adjustments::default().merge(&self.project_look)?;
         for e in &self.adjustments {
             Adjustments::default().merge(&e.values)?;
         }
         let mut points = 0_usize;
         for l in &self.layers {
+            if l.text.as_ref().is_some_and(|text| {
+                text.content.chars().count() > 1000
+                    || (text.content.chars().count() as f64)
+                        * (f64::from(text.size) * f64::from(self.width)).powi(2)
+                        > 16_777_216.0
+                    || text.content.is_empty()
+                    || !text.size.is_finite()
+                    || !(0.0001..=0.5).contains(&text.size)
+                    || text
+                        .position
+                        .iter()
+                        .any(|v| !v.is_finite() || !(0.0..=1.0).contains(v))
+                    || text
+                        .color
+                        .iter()
+                        .any(|v| !v.is_finite() || !(0.0..=1.0).contains(v))
+            }) {
+                return Err("Ogiltigt textlager".into());
+            }
+            if l.offset
+                .iter()
+                .any(|v| !v.is_finite() || !(-1.0..=1.0).contains(v))
+                || l.mask.is_some_and(|r| {
+                    r.iter().any(|v| !v.is_finite() || !(0.0..=1.0).contains(v))
+                        || r[0] >= r[2]
+                        || r[1] >= r[3]
+                })
+            {
+                return Err("Ogiltig lagermask eller förflyttning".into());
+            }
             if !l.opacity.is_finite() || !(0.0..=1.0).contains(&l.opacity) {
                 return Err("Ogiltig lageropacitet".into());
             }
@@ -334,7 +395,7 @@ impl Project {
             "source_seconds": clip.map(|c| self.fps.tick_of(i64::from(c.source_in + local)).seconds()),
             "look": clip.map(|c| self.look(&c.id, local)), "ticks_per_second": filmcraft_time::TICKS_PER_SECOND,
             "frame_ticks": self.fps.frame_duration(), "duration_ticks": self.fps.tick_of(i64::from(self.frames())),
-            "render_backend": "PhotoCraft compose/paint + LightCraft pipeline + FilmCraft time" })
+            "render_backend": "PhotoCraft compose/paint/text + LightCraft pipeline + FilmCraft edit/time" })
     }
     pub fn tick_at(&self, frame: u32) -> Tick {
         self.fps.tick_of(i64::from(frame))

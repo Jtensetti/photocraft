@@ -9,7 +9,8 @@
     "build:wasm": "bash scripts/build-wasm.sh",
     "test": "cargo test",
     "test:browser": "node tests/browser.mjs",
-    "test:production": "node tests/production.mjs"
+    "test:production": "node tests/production.mjs",
+    "test:workspace": "node tests/workspace.mjs"
   },
   "dependencies": {
     "mp4box": "2.1.2",

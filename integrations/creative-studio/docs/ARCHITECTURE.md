@@ -41,3 +41,12 @@ Förhandsvisning följer videons medieklocka så att långsam CPU-rendering inte
 Schemat behöver senare nya operationstyper för text, former, masker, transformering, keyframes och tracking; dessa finns ännu inte som tomma låtsasobjekt. De ska använda samma scope och tydliga enheter/tidsbas. Keyframes samplas vid renderingtiden. Tracking ska producera tidsbaserade parametrar; penseldrag får aldrig automatiskt tolkas som rörelsespårning.
 
 När fler spår och övergångar införs ska implicit sekventiell klipptid ersättas genom en explicit schemamigrering. GPU-, HDR-/ICC- och RAW-adaptrar ska gå bakom samma renderingstjänst. Inga ändringar av uppströmsprogrammens fungerande modeller behövs för den nuvarande versionen.
+
+## 0.2-adapter och UI
+
+`web/layout.js` äger endast panelplacering. `web/filmstrip.js` projicerar samma
+klipp och operationer, med synliga tidsminiatyrer och separat begränsad avkodarcache.
+`src/film.rs` bygger en tillfällig FilmCraft-editvy för trimning; inget extra
+projekt sparas eller äger historik. Text och masker renderas av PhotoCraft.
+Utdata från `web/export.js` kan gå till en sökbar filström, med interfolierad
+ljud-/videokodning och dränerade 1 MiB-utdataköer.

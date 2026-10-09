@@ -164,3 +164,200 @@ fn large_brush_history_stays_portable_and_reopenable() {
     cmd(&mut restored, "redo", json!({}));
     assert_eq!(restored.inspect().unwrap(), studio.inspect().unwrap());
 }
+
+#[test]
+fn trim_rebases_operations_onto_the_same_source_frames() {
+    let mut s = setup();
+    let st = cmd(
+        &mut s,
+        "selection.set",
+        json!({"clip_id":"clip-1","start":150,"end":250}),
+    );
+    let id = st["active_clip"]["id"].as_str().unwrap().to_owned();
+    cmd(&mut s, "develop.set", json!({"values":{"exposure":1}}));
+    cmd(&mut s, "seek", json!({"frame":137}));
+    cmd(&mut s, "view.set", json!({"scope":"frame"}));
+    cmd(
+        &mut s,
+        "layer.stroke",
+        json!({"stroke":{"color":[1,0,0,1],"size":0.3,"erase":false,"points":[[0.5,0.5,1]]}}),
+    );
+    let rgba = vec![80; 32 * 24 * 4];
+    let before = s.render(32, 24, 137, &rgba).unwrap();
+    let st = cmd(&mut s, "clip.trim", json!({"id":id,"start":100,"end":200}));
+    assert_eq!(st["source_seconds"], 4.0);
+    assert_eq!(st["total_frames"], 100);
+    assert_eq!(st["project"]["layers"][0]["scope"]["start"], 37);
+    assert_eq!(st["project"]["adjustments"][0]["scope"]["start"], 50);
+    assert_eq!(st["project"]["adjustments"][0]["scope"]["end"], 100);
+    assert_eq!(before, s.render(32, 24, 37, &rgba).unwrap());
+    cmd(&mut s, "undo", json!({}));
+    assert_eq!(before, s.render(32, 24, 137, &rgba).unwrap());
+    cmd(&mut s, "redo", json!({}));
+    assert_eq!(before, s.render(32, 24, 37, &rgba).unwrap());
+}
+
+#[test]
+fn reorder_keeps_the_active_frame_and_scopes_attached_to_the_clip() {
+    let mut s = setup();
+    let st = cmd(
+        &mut s,
+        "asset.add",
+        json!({"asset":{"id":"second","name":"Second","kind":"blank","width":32,"height":24,"bytes":0,"source_fps":null},"frames":20}),
+    );
+    let id = st["active_clip"]["id"].as_str().unwrap().to_owned();
+    cmd(&mut s, "seek", json!({"frame":405}));
+    cmd(
+        &mut s,
+        "selection.set",
+        json!({"clip_id":id,"start":2,"end":10}),
+    );
+    cmd(&mut s, "develop.set", json!({"values":{"contrast":20}}));
+    let st = cmd(&mut s, "clip.move", json!({"id":id,"index":0}));
+    assert_eq!(st["project"]["workspace"]["playhead"], 5);
+    assert_eq!(st["local_frame"], 5);
+    assert_eq!(st["look"]["contrast"], 20.0);
+    assert_eq!(st["project"]["workspace"]["selection"]["clip_id"], id);
+}
+
+#[test]
+fn undo_preserves_the_presentation_and_repairs_deleted_layer_selection() {
+    let mut s = setup();
+    cmd(&mut s, "layer.new", json!({}));
+    cmd(
+        &mut s,
+        "view.set",
+        json!({"mode":"light","timeline_visible":false,"timeline_height":360,"right_visible":false}),
+    );
+    let st = cmd(&mut s, "undo", json!({}));
+    assert_eq!(st["project"]["workspace"]["mode"], "light");
+    assert_eq!(st["project"]["workspace"]["timeline_visible"], false);
+    assert_eq!(st["project"]["workspace"]["timeline_height"], 360);
+    assert_eq!(st["project"]["workspace"]["selected_layer"], Value::Null);
+}
+
+#[test]
+fn project_scope_affects_all_frames_and_rejects_unsupported_paint_atomically() {
+    let mut s = setup();
+    cmd(&mut s, "view.set", json!({"scope":"project"}));
+    cmd(&mut s, "develop.set", json!({"values":{"exposure":1}}));
+    let rgba = vec![80; 32 * 24 * 4];
+    assert_eq!(
+        s.render(32, 24, 0, &rgba).unwrap(),
+        s.render(32, 24, 399, &rgba).unwrap()
+    );
+    let saved = s.save().unwrap();
+    assert!(s.execute("layer.new", "{}").is_err());
+    assert_eq!(s.save().unwrap(), saved);
+    assert_eq!(
+        cmd(&mut s, "seek", json!({"frame":399}))["look"]["exposure"],
+        1.0
+    );
+}
+
+#[test]
+fn photocraft_mask_and_layer_translation_reach_rendered_pixels() {
+    let mut s = setup();
+    let st = cmd(
+        &mut s,
+        "layer.stroke",
+        json!({"stroke":{"color":[1,0,0,1],"size":0.5,"erase":false,"points":[[0.5,0.5,1]]}}),
+    );
+    let id = st["project"]["layers"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let rgba: Vec<_> = (0..32 * 24).flat_map(|_| [0, 0, 0, 255]).collect();
+    let original = s.render(32, 24, 0, &rgba).unwrap();
+    cmd(&mut s, "layer.set", json!({"id":id,"mask":[0,0,0.5,1]}));
+    let masked = s.render(32, 24, 0, &rgba).unwrap();
+    assert!(original[(12 * 32 + 17) * 4] > 100);
+    assert_eq!(masked[(12 * 32 + 17) * 4], 0);
+    assert!(masked[(12 * 32 + 14) * 4] > 100);
+    cmd(
+        &mut s,
+        "layer.set",
+        json!({"id":id,"mask":null,"offset":[0.4,0]}),
+    );
+    let moved = s.render(32, 24, 0, &rgba).unwrap();
+    assert_eq!(moved[(12 * 32 + 14) * 4], 0);
+    assert!(moved[(12 * 32 + 28) * 4] > 100);
+}
+
+#[test]
+fn older_projects_migrate_defaults_and_invalid_new_commands_are_atomic() {
+    let s = setup();
+    let mut saved: Value = serde_json::from_str(&s.save().unwrap()).unwrap();
+    saved["project"]
+        .as_object_mut()
+        .unwrap()
+        .remove("project_look");
+    saved["project"]["clips"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("volume");
+    let mut migrated = Studio::new();
+    migrated.open(&saved.to_string()).unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(&migrated.inspect().unwrap()).unwrap()["active_clip"]["volume"],
+        1.0
+    );
+    let before = migrated.save().unwrap();
+    for (c, params) in [
+        ("clip.trim", json!({"id":"clip-1","start":10,"end":10})),
+        ("clip.trim", json!({"id":"clip-1","start":0,"end":401})),
+        ("clip.move", json!({"id":"clip-1","index":999})),
+        ("clip.volume", json!({"id":"clip-1","volume":2})),
+    ] {
+        assert!(migrated.execute(c, &params.to_string()).is_err());
+        assert_eq!(migrated.save().unwrap(), before);
+    }
+}
+
+#[test]
+fn text_uses_the_upstream_engine_and_keeps_its_temporal_scope() {
+    let mut s = setup();
+    cmd(
+        &mut s,
+        "selection.set",
+        json!({"clip_id":"clip-1","start":137,"end":200}),
+    );
+    cmd(
+        &mut s,
+        "layer.text",
+        json!({"text":{"content":"AI","size":0.25,"color":[1,0,0,1],"position":[0.1,0.7]}}),
+    );
+    let rgba: Vec<_> = (0..32 * 24).flat_map(|_| [0, 0, 0, 255]).collect();
+    let before = s.render(32, 24, 136, &rgba).unwrap();
+    let inside = s.render(32, 24, 137, &rgba).unwrap();
+    assert_ne!(before, inside);
+    assert_eq!(inside, s.render(32, 24, 199, &rgba).unwrap());
+    assert_eq!(before, s.render(32, 24, 200, &rgba).unwrap());
+    let mut reopened = Studio::new();
+    reopened.open(&s.save().unwrap()).unwrap();
+    assert_eq!(inside, reopened.render(32, 24, 150, &rgba).unwrap());
+}
+
+#[test]
+fn explicit_edit_scope_survives_a_changed_workspace_selection() {
+    let mut s = setup();
+    let original = json!({"clip_id":"clip-1","start":2,"end":7});
+    cmd(&mut s, "seek", json!({"frame":90}));
+    let st = cmd(
+        &mut s,
+        "develop.set",
+        json!({"scope":original,"values":{"exposure":1}}),
+    );
+    assert_eq!(st["look"]["exposure"], 0.0);
+    assert_eq!(st["project"]["adjustments"][0]["scope"]["end"], 7);
+    let saved = s.save().unwrap();
+    assert!(
+        s.execute(
+            "develop.set",
+            &json!({"scope":{"clip_id":"clip-1","start":390,"end":500},"values":{"exposure":1}})
+                .to_string()
+        )
+        .is_err()
+    );
+    assert_eq!(s.save().unwrap(), saved);
+}

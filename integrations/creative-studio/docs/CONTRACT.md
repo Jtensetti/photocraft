@@ -48,3 +48,21 @@ View, seek och selection skapar ingen innehållshistorik. Innehållskommandon g�
 Workern använder meddelanden `{id, op, ...params}` och svarar `{id, result}` eller `{id, error}`. Renderingsbuffertar överförs som transferable ArrayBuffer. Inga medie-original skickas in i WASM. UI kan aldrig mutera motorns projekt genom att ändra ett `inspect`-svar.
 
 Backupformatet har åtta ASCII-byte `CSTUDIO1`, fyra byte big-endian headerlängd, UTF-8 JSON-header `{json, media:[{id,size,type}]}` och därefter respektive originalmedia. Längder valideras före Blob-slicing. Backupen kräver samtliga original; saknade original måste återlänkas först.
+
+## 0.2 — tillägg
+
+- `develop.set` tar valfri explicit `scope` (Scope-objekt eller `"project"`).
+  `develop.reset` tar samma mål och tar bort dess justering. Utelämnat mål
+  använder aktuell Workspace; UI fångar scope vid geststart.
+- `clip.trim {id,start,end}` behåller ett halvöppet klipplokalt intervall och
+  använder FilmCraft edit. Lager/justeringar räknas om, klippets source_in flyttas.
+- `clip.move {id,index}` omordnar och behåller spelhuvudets aktiva klipp/lokala ruta.
+- `clip.volume {id,volume}` accepterar 0–1 och når både preview och audioexport.
+- `layer.text {text,scope?}` skapar Text `{content,size,color,position}`; storlek är
+  relativ projektbredd, position normaliserad och färg RGBA 0–1.
+- `layer.set` stödjer `text`, `name`, `mask: [x0,y0,x1,y1] | null`, `offset: [x,y]`
+  samt tidigare synlighet/opacitet. `layer.scope {id,start,end}` ändrar lagrets tid.
+- Nya `project_look`, `Clip.volume`, `Layer.text/mask/offset` har serde-standarder
+  så första versionens filer fortfarande kan öppnas. Schemanummer är fortsatt 1.
+- Dockning/namngivna layouter sparas endast i localStorage. Undo/redo bevarar
+  aktuell Workspace och reparerar val som inte längre finns i innehållet.

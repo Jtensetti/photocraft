@@ -5,7 +5,7 @@ import {resolve,extname} from 'node:path';
 import assert from 'node:assert/strict';
 
 // Serve the built app from a subdirectory, catching worker/WASM path regressions.
-const root=resolve('dist'),types={'.wasm':'application/wasm','.js':'text/javascript','.css':'text/css','.html':'text/html','.json':'application/json'};
+const root=resolve('dist'),types={'.wasm':'application/wasm','.js':'text/javascript','.css':'text/css','.html':'text/html','.json':'application/json','.jpg':'image/jpeg'};
 const server=createServer(async(req,res)=>{
   try{
     const url=new URL(req.url,'http://localhost'),prefix='/creative-studio/';

@@ -10,7 +10,8 @@
     "test": "cargo test",
     "test:browser": "node tests/browser.mjs",
     "test:production": "node tests/production.mjs",
-    "test:workspace": "node tests/workspace.mjs"
+    "test:workspace": "node tests/workspace.mjs",
+    "test:pro": "node tests/pro.mjs"
   },
   "dependencies": {
     "mp4box": "2.1.2",

@@ -191,6 +191,13 @@ impl Studio {
                 if let Some(h) = v["timeline_height"].as_u64() {
                     p.workspace.timeline_height = h.clamp(120, 480) as u32;
                 }
+                if let Some(r) = v.get("pixel_selection") {
+                    p.workspace.pixel_selection =
+                        serde_json::from_value(r.clone()).map_err(|e| e.to_string())?;
+                }
+                if v.get("selected_layer").is_some_and(Value::is_null) {
+                    p.workspace.selected_layer = None;
+                }
                 if let Some(id) = v["selected_layer"].as_str() {
                     p.workspace.selected_layer = Some(id.into());
                 }
@@ -210,10 +217,12 @@ impl Studio {
             }
             "develop.set" => {
                 Adjustments::default().merge(&v["values"])?;
+                let patch = normalize_adjustment_values(&v["values"])?;
                 if v["scope"].as_str() == Some("project")
                     || (v.get("scope").is_none() && p.workspace.scope == "project")
                 {
-                    for (key, value) in v["values"].as_object().ok_or("Ogiltiga justeringar")? {
+                    p.project_look = normalize_adjustment_values(&p.project_look)?;
+                    for (key, value) in patch.as_object().ok_or("Ogiltiga justeringar")? {
                         p.project_look[key] = value.clone();
                     }
                 } else {
@@ -221,9 +230,9 @@ impl Studio {
                     // A gesture updates one shared operation. Move it last so overlap ordering is explicit.
                     let mut values = json!({});
                     if let Some(i) = p.adjustments.iter().position(|a| a.scope == scope) {
-                        values = p.adjustments.remove(i).values;
+                        values = normalize_adjustment_values(&p.adjustments.remove(i).values)?;
                     }
-                    for (k, n) in v["values"].as_object().ok_or("Ogiltiga justeringar")? {
+                    for (k, n) in patch.as_object().ok_or("Ogiltiga justeringar")? {
                         values[k] = n.clone();
                     }
                     p.adjustments.push(Adjustment { scope, values });
@@ -257,6 +266,9 @@ impl Studio {
                     mask: None,
                     text: None,
                     offset: [0.0, 0.0],
+                    blend: photocraft_doc::BlendMode::Normal,
+                    scale: 1.0,
+                    rotation: 0.0,
                 });
                 p.workspace.selected_layer = Some(id);
             }
@@ -274,6 +286,9 @@ impl Studio {
                     strokes: vec![],
                     mask: None,
                     offset: [0.0, 0.0],
+                    blend: photocraft_doc::BlendMode::Normal,
+                    scale: 1.0,
+                    rotation: 0.0,
                     text: Some(text),
                 });
                 p.workspace.selected_layer = Some(id);
@@ -301,6 +316,9 @@ impl Studio {
                             mask: None,
                             text: None,
                             offset: [0.0, 0.0],
+                            blend: photocraft_doc::BlendMode::Normal,
+                            scale: 1.0,
+                            rotation: 0.0,
                         });
                         p.layers.len() - 1
                     }
@@ -330,9 +348,45 @@ impl Studio {
                 if let Some(r) = v.get("offset") {
                     l.offset = serde_json::from_value(r.clone()).map_err(|e| e.to_string())?;
                 }
+                if let Some(b) = v.get("blend") {
+                    l.blend = serde_json::from_value(b.clone()).map_err(|e| e.to_string())?;
+                }
+                if let Some(n) = v["scale"].as_f64() {
+                    l.scale = n;
+                }
+                if let Some(n) = v["rotation"].as_f64() {
+                    l.rotation = n;
+                }
                 if let Some(n) = v["opacity"].as_f64() {
                     l.opacity = n as f32;
                 }
+            }
+            "layer.duplicate" => {
+                let id = string(v, "id")?;
+                let mut copy = p
+                    .layers
+                    .iter()
+                    .find(|l| l.id == id)
+                    .ok_or("Lagret finns inte")?
+                    .clone();
+                copy.id = p.id("layer");
+                copy.name = format!("{} kopia", copy.name);
+                p.workspace.selected_layer = Some(copy.id.clone());
+                p.layers.push(copy);
+            }
+            "layer.move" => {
+                let id = string(v, "id")?;
+                let old = p
+                    .layers
+                    .iter()
+                    .position(|l| l.id == id)
+                    .ok_or("Lagret finns inte")?;
+                let index = integer(v, "index")? as usize;
+                if index >= p.layers.len() {
+                    return Err("Lagerpositionen finns inte".into());
+                }
+                let layer = p.layers.remove(old);
+                p.layers.insert(index, layer);
             }
             "layer.delete" => {
                 let id = string(v, "id")?;

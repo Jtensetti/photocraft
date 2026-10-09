@@ -53,11 +53,54 @@ pub struct Adjustments {
     pub temperature: f64,
     pub tint: f64,
     pub saturation: f64,
+    #[serde(flatten)]
+    pub advanced: std::collections::BTreeMap<String, Value>,
 }
 impl Adjustments {
     pub fn merge(&mut self, v: &Value) -> Result<(), String> {
         let o = v.as_object().ok_or("Justeringar måste vara ett objekt")?;
-        for (key, val) in o {
+        for (input_key, val) in o {
+            let key = canonical_control_key(input_key).to_owned();
+            if key == "treatment" {
+                if !matches!(val.as_str(), Some("color" | "bw")) {
+                    return Err("Ogiltig färgbehandling".into());
+                }
+                self.advanced.insert(key.clone(), val.clone());
+                continue;
+            }
+            if ["curve.master", "curve.red", "curve.green", "curve.blue"].contains(&key.as_str()) {
+                let points = val.as_array().ok_or("Kurvan måste innehålla punkter")?;
+                if points.len() < 2 || points.len() > 32 {
+                    return Err("Kurvan måste ha 2–32 punkter".into());
+                }
+                let mut last = -1.0;
+                for point in points {
+                    let x = point["x"]
+                        .as_f64()
+                        .filter(|n| n.is_finite() && (0.0..=1.0).contains(n))
+                        .ok_or("Ogiltig kurvpunkt")?;
+                    let _y = point["y"]
+                        .as_f64()
+                        .filter(|n| n.is_finite() && (0.0..=1.0).contains(n))
+                        .ok_or("Ogiltig kurvpunkt")?;
+                    if x <= last {
+                        return Err("Kurvpunkter måste ha stigande indata".into());
+                    }
+                    last = x;
+                }
+                self.advanced.insert(key.clone(), val.clone());
+                continue;
+            }
+            if let Some(spec) = lightcraft_develop::controls::find(&key)
+                && supported_control(spec)
+            {
+                let n = val
+                    .as_f64()
+                    .filter(|n| n.is_finite() && (spec.min..=spec.max).contains(n))
+                    .ok_or("Ogiltigt framkallningsvärde")?;
+                self.advanced.insert(key.clone(), json!(n));
+                continue;
+            }
             let n = val
                 .as_f64()
                 .filter(|v| v.is_finite())
@@ -80,10 +123,46 @@ impl Adjustments {
         Ok(())
     }
 }
+pub fn supported_control(spec: &lightcraft_develop::ControlSpec) -> bool {
+    use lightcraft_develop::Section::*;
+    matches!(
+        spec.section,
+        Light
+            | Curve
+            | Color
+            | Mixer
+            | BwMix
+            | Grading
+            | Effects
+            | Vignette
+            | Grain
+            | Detail
+            | Calibration
+    )
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Adjustment {
     pub scope: Scope,
     pub values: Value,
+}
+pub fn canonical_control_key(key: &str) -> &str {
+    match key {
+        "light.exposure" => "exposure",
+        "light.contrast" => "contrast",
+        "light.highlights" => "highlights",
+        "light.shadows" => "shadows",
+        "color.saturation" => "saturation",
+        _ => key,
+    }
+}
+
+/// Retain sparse settings while ensuring both UI/API spellings update one value.
+pub fn normalize_adjustment_values(values: &Value) -> Result<Value, String> {
+    let mut normalized = json!({});
+    for (key, value) in values.as_object().ok_or("Ogiltiga justeringar")? {
+        normalized[canonical_control_key(key)] = value.clone();
+    }
+    Ok(normalized)
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Stroke {
@@ -93,6 +172,31 @@ pub struct Stroke {
     /// Normalized x, y, pressure.
     pub points: Vec<[f64; 3]>,
     pub erase: bool,
+    #[serde(default = "default_hardness")]
+    pub hardness: f32,
+    #[serde(default = "default_opacity")]
+    pub opacity: f32,
+    #[serde(default = "default_opacity")]
+    pub flow: f32,
+    #[serde(default)]
+    pub pressure_size: bool,
+    #[serde(default)]
+    pub selection: Option<[f64; 4]>,
+}
+fn default_hardness() -> f32 {
+    0.85
+}
+fn default_opacity() -> f32 {
+    1.0
+}
+fn normal_blend() -> photocraft_doc::BlendMode {
+    photocraft_doc::BlendMode::Normal
+}
+fn default_scale() -> f64 {
+    1.0
+}
+fn valid_rect(r: [f64; 4]) -> bool {
+    r.iter().all(|v| v.is_finite() && (0.0..=1.0).contains(v)) && r[0] < r[2] && r[1] < r[3]
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Text {
@@ -115,6 +219,12 @@ pub struct Layer {
     pub text: Option<Text>,
     #[serde(default)]
     pub offset: [f64; 2],
+    #[serde(default = "normal_blend")]
+    pub blend: photocraft_doc::BlendMode,
+    #[serde(default = "default_scale")]
+    pub scale: f64,
+    #[serde(default)]
+    pub rotation: f64,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Workspace {
@@ -127,6 +237,8 @@ pub struct Workspace {
     pub timeline_height: u32,
     pub left_visible: bool,
     pub right_visible: bool,
+    #[serde(default)]
+    pub pixel_selection: Option<[f64; 4]>,
 }
 impl Default for Workspace {
     fn default() -> Self {
@@ -140,6 +252,7 @@ impl Default for Workspace {
             timeline_height: 210,
             left_visible: true,
             right_visible: true,
+            pixel_selection: None,
         }
     }
 }
@@ -327,12 +440,26 @@ impl Project {
         for e in &self.adjustments {
             Adjustments::default().merge(&e.values)?;
         }
+        if self
+            .workspace
+            .pixel_selection
+            .is_some_and(|r| !valid_rect(r))
+        {
+            return Err("Ogiltig bildmarkering".into());
+        }
         let mut points = 0_usize;
         for l in &self.layers {
+            if !l.scale.is_finite()
+                || !(0.05..=4.0).contains(&l.scale)
+                || !l.rotation.is_finite()
+                || !(-180.0..=180.0).contains(&l.rotation)
+            {
+                return Err("Ogiltig lagertransformation".into());
+            }
             if l.text.as_ref().is_some_and(|text| {
                 text.content.chars().count() > 1000
                     || (text.content.chars().count() as f64)
-                        * (f64::from(text.size) * f64::from(self.width)).powi(2)
+                        * (f64::from(text.size) * f64::from(self.width) * l.scale).powi(2)
                         > 16_777_216.0
                     || text.content.is_empty()
                     || !text.size.is_finite()
@@ -363,6 +490,13 @@ impl Project {
                 return Err("Ogiltig lageropacitet".into());
             }
             for s in &l.strokes {
+                if [s.hardness, s.opacity, s.flow]
+                    .iter()
+                    .any(|n| !n.is_finite() || !(0.0..=1.0).contains(n))
+                    || s.selection.is_some_and(|r| !valid_rect(r))
+                {
+                    return Err("Ogiltiga penselinställningar".into());
+                }
                 points = points
                     .checked_add(s.points.len())
                     .filter(|&n| n <= 500_000)
@@ -395,6 +529,8 @@ impl Project {
             "source_seconds": clip.map(|c| self.fps.tick_of(i64::from(c.source_in + local)).seconds()),
             "look": clip.map(|c| self.look(&c.id, local)), "ticks_per_second": filmcraft_time::TICKS_PER_SECOND,
             "frame_ticks": self.fps.frame_duration(), "duration_ticks": self.fps.tick_of(i64::from(self.frames())),
+            "develop_controls": lightcraft_develop::CONTROLS.iter().filter(|c| supported_control(c)).collect::<Vec<_>>(),
+            "blend_modes": photocraft_doc::BlendMode::LAYER_MODES.iter().map(|b| json!({"id":b,"label":b.label()})).collect::<Vec<_>>(),
             "render_backend": "PhotoCraft compose/paint/text + LightCraft pipeline + FilmCraft edit/time" })
     }
     pub fn tick_at(&self, frame: u32) -> Tick {

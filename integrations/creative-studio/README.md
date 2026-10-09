@@ -2,7 +2,7 @@
 
 En lokal, tidsmedveten bild- och videoredigerare med en arbetsyta, ett Rust-projekt och kombinerbara verktygspaneler. Originalmedia stannar i webbläsaren. Projektet använder faktiska bibliotek från PhotoCraft, LightCraft och FilmCraft, utan att ändra deras källkod.
 
-Detta är en fungerande vertikal första leverans, inte de tre fullständiga programmens samtliga verktyg. Se [funktionsstatus och nästa steg](docs/ROADMAP.md).
+Version 0.3 har en tätare arbetsyta med menyer, verktygsrad, lagerpanel, histogram och kurvor, byggd vidare på originalens gränssnitt. De tre fullständiga programmens samtliga verktyg är ännu inte anslutna. Se [funktionsstatus och nästa steg](docs/ROADMAP.md).
 
 ## Starta
 
@@ -23,12 +23,14 @@ npm run dev
 1. Skapa en tom bild eller importera PNG, JPEG, WebP eller en MP4 med konstant bildfrekvens. Första mediet anger projektets upplösning och bildfrekvens; senare videor måste ha samma bildfrekvens.
 2. Navigera med filmrullen, skjutreglaget eller piltangenterna. Zooma till **Bildrutor**, Shift-klicka eller dra för att välja ett intervall. Bildrutorna räknas från **0**. Mellanslag spelar/pausar.
 3. Välj **Aktuell bildruta**, **Markerat intervall**, **Hela klippet** eller **Projekt · framkallning**. Sätt intervallets start med **I**, gå till sista inkluderade bildrutan och tryck **O**. Ett intervall 200–299 sparas som `[200, 300)`.
-4. Måla eller sudda i PhotoCraft. Lager har egen omfattning, synlighet och opacitet. Skapa textlager, dra en rektangulär mask eller förflytta det valda lagret i X/Y. I LightCraft kan exponering, kontrast, högdagrar, skuggor, temperatur, nyans och mättnad ändras för samma omfattning.
+4. Måla eller sudda i PhotoCraft med hårdhet, opacitet, flöde och penntryck. Rektangulär bildmarkering begränsar nya penseldrag. Lager har egen tidsomfattning, mask och ett av 27 blandningslägen; flytta på canvasen, skala, rotera, duplicera eller ordna lagren. LightCraft erbjuder RGB-punktkurvor och reglage från den verkliga motorn för ljus, färg, HSL, svartvit mix, färggradering, effekter, vinjett, korn, detalj och kalibrering. Histogramsdata kommer från den renderade bildrutan.
 5. Växla läge. Projekt, historik, spelhuvud och markering ligger kvar. FilmCraft-panelen erbjuder delning, riktig trimning, omordning, ljudvolym/av/på och stillbildens varaktighet.
 6. **Spara** lagrar projekt och historik i IndexedDB. **Öppna** återställer projektet. **Säkerhetskopia** laddar ned en `.cstudio-backup` med projekt och originalmedia, som kan öppnas på en annan enhet. Klicka på ett saknat medium för att återlänka filen.
 7. Exportera aktuell bearbetad bildruta som PNG eller hela sekvensen som WebM med VP9 och, när tillgängligt, Opus-ljud. Exporten renderar varje bildruta i ordning med explicit tidsstämpel.
 
 Stillbilder har en varaktighet på en sekund vid import; FilmCraft-panelen kan ändra den till exempelvis fem sekunder utan duplicerade media eller rasterbilder. Tidslinjen kan döljas och ändra höjd. Paneler kan kombineras, dras mellan dockor, visas som flikar eller staplar, frikopplas och minimeras. Spara namngivna arbetsytor med **Spara arbetsyta**. Dessa val ligger utanför innehållshistoriken. **Spår** visar även lagrens tidsband; dra deras ändar för att ändra omfattningen. Se [konkret gränssnittslogik](docs/WORKSPACE.md).
+
+Verktygsradens kortkommandon: **V** flytta, **M** markering, **B** pensel, **E** sudd, **T** text, **Alt+I** pipett, **H** hand och **Z** zoom. **Ctrl/Cmd+J** duplicerar lager och **Ctrl/Cmd+D** tar bort bildmarkeringen. **C** delar aktivt klipp; **I/O** behåller tidslinjens intervallval. Zoomnivån ändrar bara canvasens presentation; preview är fortfarande begränsad till 960×640.
 
 ## Verifiera
 
@@ -40,11 +42,14 @@ npx playwright install --with-deps chromium
 npm run build:wasm
 npm run test:browser
 npm run test:workspace
+npm run test:pro
 npm run build
 npm run test:production
 ```
 
 Webbläsartestet kräver `ffmpeg` och `ffprobe` med libvpx-vp9/libopus. Det importerar verklig MP4, redigerar intervall och en enskild bildruta, sparar/återöppnar, återställer backup och avkodar den faktiska exportfilen. Det kontrollerar pixelvärden, exakt antal bildrutor, bildfrekvens, ljudvaraktighet och tystnad efter klippdelning/ljud av. Testresultat och skärmbild hamnar i `test-results/`.
+
+Det separata `test:pro` verifierar kurvor med faktiska pixlar inom rätt bildrutescope, HSL, bildmarkering, penselopacitet, blandning, skala/rotation, lagerordning, pipett, zoom/panorering och menyer genom gränssnittet. PNG-exporten avkodas och jämförs pixel för pixel med samma projektoperationer. Exempelprojektet använder en lokalt bundlad public-domain-bild; se [källa](public/demo/SOURCE.md).
 
 Testets MP4 använder **VP9/Opus**. H.264/AAC i vanlig Chrome/Edge hanteras genom webbläsarens avkodning och kontroller av WebCodecs-stöd, men har **inte verifierats** i den medföljande Chromium-miljön. Det är en separat kvarvarande verifiering.
 

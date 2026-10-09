@@ -27,7 +27,7 @@ try{
   await page.waitForFunction(()=>creativeStudio.inspect().project.adjustments.length===1);
   let s=await page.evaluate(()=>creativeStudio.inspect());assert.equal(s.project.adjustments[0].scope.start,2);assert.equal(s.project.adjustments[0].scope.end,7);
   const content=JSON.stringify([s.project.assets,s.project.clips,s.project.adjustments,s.project.layers]);
-  await page.locator('[data-panel=photo] .dock-actions select').selectOption('right');await page.locator('#right-panel .dock-tabs button').filter({hasText:'LightCraft'}).click();await page.locator('[data-panel=light] .dock-actions select').selectOption('left');
+  await page.locator('[data-panel=photo] .dock-actions select').selectOption('right');await page.locator('#right-panel .dock-bar button').click();await page.locator('#right-panel .dock-tabs button').filter({hasText:'LightCraft'}).click();await page.locator('[data-panel=light] .dock-actions select').selectOption('left');
   assert.ok(await page.locator('#left-panel #light-panel').isVisible());assert.ok(await page.locator('#right-panel #photo-panel').isVisible());
   await page.locator('[data-panel=photo] .dock-actions select').selectOption('float');assert.ok(await page.locator('.floating #photo-panel').isVisible());
   await page.evaluate(()=>creativeStudio.execute('view.set',{timeline_height:280,timeline_visible:false}));await page.locator('#layout-save').click();await page.locator('#layout-name').fill('Color + paint');await page.locator('#layout-form button[value=save]').click();

@@ -2,7 +2,7 @@ use crate::model::Project;
 use photocraft_doc::{
     ColorMode, Document, Layer, LayerContent, LayerMask, PixelFormat, SampleType,
 };
-use photocraft_geom::{Affine, Rect, Size};
+use photocraft_geom::{Affine, Point, Rect, Size};
 use photocraft_paint::{BrushSettings, StrokePoint};
 use photocraft_raster::Surface;
 
@@ -22,6 +22,7 @@ pub fn frame(p: &Project, w: u32, h: u32, global: u32, rgba: &[u8]) -> Result<Ve
         || a.temperature != 0.0
         || a.tint != 0.0
         || a.saturation != 0.0
+        || !a.advanced.is_empty()
     {
         let matrix = lightcraft_color::SRGB.to_space(&lightcraft_color::REC2020);
         let source = lightcraft_raster::Rgb32f {
@@ -49,6 +50,35 @@ pub fn frame(p: &Project, w: u32, h: u32, global: u32, rgba: &[u8]) -> Result<Ve
         settings.wb.tint = a.tint;
         settings.wb.mode = lightcraft_develop::WbMode::Custom;
         settings.color.saturation = a.saturation;
+        for (key, value) in &a.advanced {
+            match key.as_str() {
+                "treatment" => {
+                    settings.treatment =
+                        serde_json::from_value(value.clone()).map_err(|e| e.to_string())?
+                }
+                "curve.master" => {
+                    settings.curve.master =
+                        serde_json::from_value(value.clone()).map_err(|e| e.to_string())?
+                }
+                "curve.red" => {
+                    settings.curve.red =
+                        serde_json::from_value(value.clone()).map_err(|e| e.to_string())?
+                }
+                "curve.green" => {
+                    settings.curve.green =
+                        serde_json::from_value(value.clone()).map_err(|e| e.to_string())?
+                }
+                "curve.blue" => {
+                    settings.curve.blue =
+                        serde_json::from_value(value.clone()).map_err(|e| e.to_string())?
+                }
+                _ => {
+                    if let Some(n) = value.as_f64() {
+                        lightcraft_develop::controls::set(&mut settings, key, n);
+                    }
+                }
+            }
+        }
         let result = lightcraft_pipeline::render(
             &source,
             &lightcraft_pipeline::SourceInfo::default(),
@@ -80,27 +110,42 @@ pub fn frame(p: &Project, w: u32, h: u32, global: u32, rgba: &[u8]) -> Result<Ve
         .filter(|l| l.visible && l.scope.contains(&clip.id, local))
     {
         let mut surface = Surface::new(PixelFormat::RGBA32F);
+        let transform = Affine::translate(-f64::from(w) / 2.0, -f64::from(h) / 2.0)
+            .then(&Affine::scale(l.scale))
+            .then(&Affine::rotate(l.rotation.to_radians()))
+            .then(&Affine::translate(
+                f64::from(w) / 2.0 + l.offset[0] * f64::from(w),
+                f64::from(h) / 2.0 + l.offset[1] * f64::from(h),
+            ));
         for s in &l.strokes {
             let brush = BrushSettings {
-                size: s.size * w as f32,
+                size: (f64::from(s.size) * f64::from(w) * l.scale).min(4096.0) as f32,
                 color: s.color,
                 erase: s.erase,
-                pressure_size: false,
-                hardness: 0.85,
+                pressure_size: s.pressure_size,
+                hardness: s.hardness,
+                opacity: s.opacity,
+                flow: s.flow,
                 ..Default::default()
             };
             let points: Vec<_> = s
                 .points
                 .iter()
                 .map(|v| {
-                    StrokePoint::new(
-                        (v[0] + l.offset[0]) * f64::from(w),
-                        (v[1] + l.offset[1]) * f64::from(h),
-                        v[2] as f32,
-                    )
+                    let point =
+                        transform.apply(Point::new(v[0] * f64::from(w), v[1] * f64::from(h)));
+                    StrokePoint::new(point.x, point.y, v[2] as f32)
                 })
                 .collect();
-            photocraft_paint::render_stroke(&mut surface, &brush, &points, None, false, 1.0);
+            let selection = s.selection.map(|r| selection_surface(w, h, r));
+            photocraft_paint::render_stroke(
+                &mut surface,
+                &brush,
+                &points,
+                selection.as_ref(),
+                false,
+                1.0,
+            );
         }
         if let Some(text) = &l.text {
             let mut view = photocraft_doc::TextLayer {
@@ -114,9 +159,10 @@ pub fn frame(p: &Project, w: u32, h: u32, global: u32, rgba: &[u8]) -> Result<Ve
                     text.color[3],
                 ),
                 transform: Affine::translate(
-                    (text.position[0] + l.offset[0]) * f64::from(w),
-                    (text.position[1] + l.offset[1]) * f64::from(h),
-                ),
+                    text.position[0] * f64::from(w),
+                    text.position[1] * f64::from(h),
+                )
+                .then(&transform),
                 ..Default::default()
             };
             static ENGINE: std::sync::OnceLock<std::sync::Mutex<photocraft_text::TextEngine>> =
@@ -131,6 +177,7 @@ pub fn frame(p: &Project, w: u32, h: u32, global: u32, rgba: &[u8]) -> Result<Ve
         }
         let mut layer = Layer::new(&l.name, LayerContent::Raster(surface));
         layer.opacity = l.opacity;
+        layer.blend = l.blend;
         if let Some(r) = l.mask {
             let mut data = vec![0_u8; (w as usize) * (h as usize)];
             for y in 0..h {
@@ -154,4 +201,23 @@ pub fn frame(p: &Project, w: u32, h: u32, global: u32, rgba: &[u8]) -> Result<Ve
         doc.layers.push(layer);
     }
     Ok(photocraft_compose::render(&doc, rect).to_rgba8().pixels)
+}
+
+fn selection_surface(w: u32, h: u32, r: [f64; 4]) -> Surface {
+    let mut data = vec![0_u8; (w as usize) * (h as usize)];
+    for y in 0..h {
+        for x in 0..w {
+            let nx = f64::from(x) / f64::from(w);
+            let ny = f64::from(y) / f64::from(h);
+            if nx >= r[0]
+                && nx < r[2]
+                && ny >= r[1]
+                && ny < r[3]
+                && let Some(value) = data.get_mut((y as usize) * (w as usize) + x as usize)
+            {
+                *value = 255;
+            }
+        }
+    }
+    Surface::from_interleaved(PixelFormat::GRAY8, Rect::from_size(Size::new(w, h)), &data)
 }

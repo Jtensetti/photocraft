@@ -1,7 +1,7 @@
 // Presentation only. Panel placement is never a project operation or undo entry.
 const KEY='creative-studio-workspaces-v2';
-const names={media:'Projektmedia',photo:'PhotoCraft',light:'LightCraft',film:'FilmCraft'};
-const defaults=()=>({panels:{media:{dock:'left',open:true},photo:{dock:'left',open:true},light:{dock:'right',open:true},film:{dock:'right',open:false}},tabs:{left:false,right:true},active:{left:'media',right:'light'},widths:{left:242,right:290}});
+const names={media:'Projektmedia',light:'LightCraft',photo:'PhotoCraft',film:'FilmCraft'};
+const defaults=()=>({panels:{media:{dock:'left',open:true},photo:{dock:'right',open:true},light:{dock:'right',open:false},film:{dock:'right',open:false}},tabs:{left:false,right:false},active:{left:'media',right:'photo'},widths:{left:218,right:310}});
 export function createWorkspace({status,getPresentation,applyPresentation}){
   const left=document.getElementById('left-panel'),right=document.getElementById('right-panel');
   const saved=()=>{try{return JSON.parse(localStorage.getItem(KEY))||{layouts:{}};}catch{return {layouts:{}};}};

@@ -1,4 +1,4 @@
-# Creative Studio 0.2 — arbetsytan
+# Creative Studio 0.3 — arbetsytan
 
 Canvasen sitter kvar i mitten. Verktygsväxling öppnar en panel och lämnar projekt,
 spelhuvud, markering och historik intakta. PhotoCraft och LightCraft kan därför
@@ -33,8 +33,11 @@ Text renderas med PhotoCrafts textmotor och bundlad Inter, utan HTML-text ovanp�
 canvasen. Text, pensel, rektangulär lagermask, opacitet, synlighet och förflyttning
 sparas i samma lageroperationer och följer med i PNG och video. Textverktyget
 skapar lager i vald omfattning; det valda lagrets start/slut kan sedan ändras i
-panel eller tidsband. Förflyttning är X/Y; fri rotation/skala och penselmasker
-återstår.
+panel eller tidsband. Flyttaverktyget drar det valda lagret på canvasen. Lager
+kan skalas likformigt och roteras kring canvascentrum; text använder samma
+PhotoCraft Affine-transform. Rektangulära masker och penselmarkeringar ligger
+fortfarande i canvasens koordinater och följer inte lagertransformen.
+Perspektivtransform, objektets egna handtag och penselmasker återstår.
 
 FilmCraft-trimning skapar en tillfällig vy för `filmcraft-edit::trim`. Ingen
 FilmCraft Session eller separat sparad FilmCraft-fil skapas. Gemensamma scopes
@@ -56,3 +59,23 @@ interfolierat. En avbruten/felaktig direktlagring anropar `abort()` på filströ
 Original läses fortfarande från Blob-delar. Testet avkodar en 121-sekunders
 export via en verklig OPFS-filström; en full 30-minuters kvalitets- och
 minnesprofil är fortfarande framtida validering.
+
+## Verktygsrad och framkallning i 0.3
+
+Menyer och verktygsrad anropar samma kommandon som panelerna. Penselns hårdhet,
+opacitet, flöde och tryckinställning skickas till PhotoCraft BrushSettings.
+Bildmarkeringen fångas per penseldrag och avgränsar verkliga penselpixlar; den
+är oberoende av tidsmarkeringen. De 27 blandningslägena skickas till samma
+PhotoCraft-kompositor som PNG/video använder. Lagerduplicering och lagerordning
+ingår i den gemensamma innehållshistoriken. Pipetten läser renderade canvaspixlar.
+
+LightCrafts reglage byggs från Rust-motorns ControlSpec med faktiska gränser och
+standardvärden. RGB-kurvans punkter sparas som en enda tidsbegränsad operation,
+med strikt stigande x-värden. HSL, grading, detalj, effekter och övriga anslutna
+sektioner använder DevelopSettings och samma pipeline som export. Histogrammet
+beräknas från den aktuella renderade preview-bufferten. Numeriska reglage
+fångar sitt tidsmål vid geststart; kurvan skickar en operation vid avslutat drag.
+
+Canvaszoom och handverktygets panorering är presentation och påverkar varken
+projektpixlar, exportupplösning eller innehållshistorik. Zoom förstorar ännu
+preview-bufferten, inte en ny fullupplöst renderingsregion.

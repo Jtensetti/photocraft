@@ -361,3 +361,141 @@ fn explicit_edit_scope_survives_a_changed_workspace_selection() {
     );
     assert_eq!(s.save().unwrap(), saved);
 }
+
+#[test]
+fn upstream_curve_and_color_mixer_render_scoped_pixels_and_reopen() {
+    let mut s = setup();
+    let source: Vec<u8> = [120, 65, 40, 255].repeat(32 * 24);
+    let original = s.render(32, 24, 0, &source).unwrap();
+    cmd(&mut s, "seek", json!({"frame": 5}));
+    cmd(
+        &mut s,
+        "develop.set",
+        json!({"values": {
+            "curve.master":[{"x":0.0,"y":0.0},{"x":0.5,"y":0.8},{"x":1.0,"y":1.0}],
+            "mixer.red.hue":40,"color.vibrance":30,"light.whites":15
+        }}),
+    );
+    let edited = s.render(32, 24, 5, &source).unwrap();
+    assert_ne!(edited, original);
+    assert_eq!(original, s.render(32, 24, 6, &source).unwrap());
+    let mut restored = Studio::new();
+    restored.open(&s.save().unwrap()).unwrap();
+    assert_eq!(edited, restored.render(32, 24, 5, &source).unwrap());
+    let before = restored.save().unwrap();
+    for values in [
+        json!({"curve.master":[{"x":0.7,"y":0.5},{"x":0.3,"y":0.4}]}),
+        json!({"detail.sharpenAmount":500}),
+        json!({"geometry.rotate":10}),
+        json!({"treatment":"hdr"}),
+    ] {
+        assert!(
+            restored
+                .execute("develop.set", &json!({"values":values}).to_string())
+                .is_err()
+        );
+        assert_eq!(before, restored.save().unwrap());
+    }
+}
+
+#[test]
+fn upstream_control_aliases_update_the_same_sparse_value() {
+    let mut s = setup();
+    let source = [100, 80, 50, 255].repeat(32 * 24);
+    cmd(&mut s, "seek", json!({"frame":5}));
+    cmd(
+        &mut s,
+        "develop.set",
+        json!({"values":{"light.exposure":1}}),
+    );
+    let bright = s.render(32, 24, 5, &source).unwrap();
+    let st = cmd(&mut s, "develop.set", json!({"values":{"exposure":0}}));
+    assert_eq!(st["look"]["exposure"], 0.0);
+    assert!(
+        st["project"]["adjustments"][0]["values"]
+            .get("light.exposure")
+            .is_none()
+    );
+    assert_ne!(bright, s.render(32, 24, 5, &source).unwrap());
+    cmd(
+        &mut s,
+        "develop.set",
+        json!({"scope":"project","values":{"exposure":1}}),
+    );
+    let st = cmd(
+        &mut s,
+        "develop.set",
+        json!({"scope":"project","values":{"light.exposure":0.5}}),
+    );
+    assert_eq!(st["look"]["exposure"], 0.5);
+    assert_eq!(st["project"]["project_look"], json!({"exposure":0.5}));
+    let mut restored = Studio::new();
+    restored.open(&s.save().unwrap()).unwrap();
+    assert_eq!(
+        s.render(32, 24, 5, &source).unwrap(),
+        restored.render(32, 24, 5, &source).unwrap()
+    );
+}
+
+#[test]
+fn brush_selection_and_settings_are_real_pixel_operations() {
+    let mut s = setup();
+    let rgba = [100, 100, 100, 255].repeat(32 * 24);
+    cmd(
+        &mut s,
+        "layer.stroke",
+        json!({"stroke":{"color":[1,0,0,1],"size":0.4,"erase":false,"points":[[0.5,0.5,1]],"hardness":1,"opacity":0.5,"flow":1,"selection":[0.0,0.0,0.5,1.0]}}),
+    );
+    let result = s.render(32, 24, 0, &rgba).unwrap();
+    let inside = (12 * 32 + 14) * 4;
+    let outside = (12 * 32 + 17) * 4;
+    assert!(result[inside] > 100 && result[inside] < 255);
+    assert_eq!(&result[outside..outside + 4], &rgba[outside..outside + 4]);
+    let old = s.save().unwrap();
+    assert!(s.execute("layer.stroke", &json!({"stroke":{"color":[1,0,0,1],"size":0.4,"erase":false,"points":[[0.5,0.5,1]],"flow":2}}).to_string()).is_err());
+    assert_eq!(old, s.save().unwrap());
+}
+
+#[test]
+fn layer_blend_scale_rotation_and_order_use_shared_compositor() {
+    let mut s = setup();
+    let rgba = [128, 128, 128, 255].repeat(32 * 24);
+    let state = cmd(
+        &mut s,
+        "layer.stroke",
+        json!({"stroke":{"color":[1,0,0,1],"size":0.12,"erase":false,"points":[[0.25,0.5,1]],"hardness":1}}),
+    );
+    let id = state["project"]["workspace"]["selected_layer"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let normal = s.render(32, 24, 0, &rgba).unwrap();
+    cmd(&mut s, "layer.set", json!({"id":id,"blend":"Multiply"}));
+    let multiply = s.render(32, 24, 0, &rgba).unwrap();
+    assert_ne!(normal, multiply);
+    cmd(
+        &mut s,
+        "layer.set",
+        json!({"id":id,"rotation":180,"scale":1.5}),
+    );
+    let transformed = s.render(32, 24, 0, &rgba).unwrap();
+    assert_eq!(
+        &transformed[(12 * 32 + 8) * 4..(12 * 32 + 8) * 4 + 4],
+        &rgba[(12 * 32 + 8) * 4..(12 * 32 + 8) * 4 + 4]
+    );
+    assert_ne!(
+        &transformed[(12 * 32 + 27) * 4..(12 * 32 + 27) * 4 + 4],
+        &rgba[(12 * 32 + 27) * 4..(12 * 32 + 27) * 4 + 4]
+    );
+    let st = cmd(&mut s, "layer.duplicate", json!({"id":id}));
+    let copy = st["project"]["workspace"]["selected_layer"].clone();
+    assert_eq!(st["project"]["layers"].as_array().unwrap().len(), 2);
+    let moved = cmd(&mut s, "layer.move", json!({"id":copy,"index":0}));
+    assert_eq!(moved["project"]["layers"][0]["id"], copy);
+    let mut reopened = Studio::new();
+    reopened.open(&s.save().unwrap()).unwrap();
+    assert_eq!(
+        s.render(32, 24, 0, &rgba).unwrap(),
+        reopened.render(32, 24, 0, &rgba).unwrap()
+    );
+}

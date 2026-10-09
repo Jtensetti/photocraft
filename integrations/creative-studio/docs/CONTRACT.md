@@ -43,7 +43,7 @@ Penselpunkter är normaliserade `[x, y, pressure]`, färg är raka RGBA-komponen
 | `clip.duration` | id, frames; endast stillbild/blank |
 | `undo`, `redo` | inga |
 
-View, seek och selection skapar ingen innehållshistorik. Innehållskommandon gör det. Sparade snapshots innehåller också workspace-state; undo kan därför återställa arbetsytans dåvarande val.
+View, seek och selection skapar ingen innehållshistorik. Innehållskommandon gör det. Sparade snapshots innehåller också workspace-state; undo/redo bevarar dock aktuell presentation och reparerar ogiltiga innehållsval.
 
 Workern använder meddelanden `{id, op, ...params}` och svarar `{id, result}` eller `{id, error}`. Renderingsbuffertar överförs som transferable ArrayBuffer. Inga medie-original skickas in i WASM. UI kan aldrig mutera motorns projekt genom att ändra ett `inspect`-svar.
 
@@ -66,3 +66,26 @@ Backupformatet har åtta ASCII-byte `CSTUDIO1`, fyra byte big-endian headerläng
   så första versionens filer fortfarande kan öppnas. Schemanummer är fortsatt 1.
 - Dockning/namngivna layouter sparas endast i localStorage. Undo/redo bevarar
   aktuell Workspace och reparerar val som inte längre finns i innehållet.
+
+## 0.3 — anslutna motorverktyg
+
+- `inspect()` inkluderar `develop_controls` (92 stödda upstream ControlSpec) och
+  `blend_modes` (27 faktiska PhotoCraft-lägen). UI visar 92 numeriska reglage:
+  85 ytterligare motorreglage plus de sju tidigare; vitbalansen visas fortsatt
+  som relativ temperatur/nyans. Absoluta `wb.temp`/`wb.tint` stöds via API.
+- `develop.set.values` accepterar de exponerade numeriska kontroll-ID:erna,
+  `treatment: "color" | "bw"` och `curve.master/red/green/blue` som 2–32
+  `{x,y}`-punkter inom 0–1 med strikt stigande x. Alias för light.exposure,
+  contrast, highlights, shadows och color.saturation normaliseras till de
+  tidigare nycklarna; samma parameter lagras inte dubbelt.
+- `view.set.pixel_selection` är en normaliserad rektangel eller null; detta
+  är bildmarkering, separat från den tidsmässiga `selection`.
+- `layer.stroke.stroke` stödjer `hardness`, `opacity`, `flow` (0–1),
+  `pressure_size` och `selection` (rektangel eller null). Dessa sparas per
+  operation och skickas direkt till PhotoCrafts paintmotor.
+- `layer.set` stödjer `blend` (enum-ID från inspect), likformig `scale`
+  (0.05–4) och `rotation` (-180–180 grader kring canvascentrum).
+- `layer.duplicate {id}` kopierar innehåll och scope med nytt ID;
+  `layer.move {id,index}` flyttar lagret i den globala lagerarrayen.
+- Nya fält har serde-standarder. Tidigare versioners projekt, historik och
+  backupformat fungerar fortsatt, med samma schemanummer 1.

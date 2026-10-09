@@ -1,4 +1,7 @@
 import './style.css';
+import {icon} from './icons.js';
+import {createDevelopUI} from './develop-ui.js';
+import {createProUI} from './pro-ui.js';
 import {createWorkspace} from './layout.js';
 import {createFilmstrip} from './filmstrip.js';
 import {exportTimeline} from './export.js';
@@ -8,7 +11,7 @@ import {metadata,source,seek,pauseAll,clearSources,event} from './media.js';
 const $=id=>document.getElementById(id);
 const worker=new Worker(new URL('./worker.js',import.meta.url),{type:'module'});
 const pending=new Map();let serial=0,state,dirty=false,busy=false,playing=false,playToken=0,exporting=false,cancelExport=false,tool='brush',renderToken=0,rendering=false,rerender=false;
-let workspace,filmstrip,recoveryTimer,recovery;
+let workspace,filmstrip,developUI,proUI,recoveryTimer,recovery,canvasGesture;
 let projectId=crypto.randomUUID(); const thumbs=new Map();
 worker.onmessage=({data:m})=>{const p=pending.get(m.id);if(!p)return;pending.delete(m.id);clearTimeout(p.timer);m.error?p.reject(new Error(m.error)):p.resolve(m.result);};
 worker.onerror=()=>{for(const p of pending.values()){clearTimeout(p.timer);p.reject(new Error('Redigeringsmotorn stannade. Ladda om och öppna senast sparade projekt.'));}pending.clear();status('Redigeringsmotorn kunde inte köras',true);};
@@ -57,7 +60,7 @@ function update(){
   $('duration').disabled=a?.kind==='video';$('duration').value=c?(c.frames/fps()).toFixed(2):1;
   $('project-details').textContent=`${p.width} × ${p.height} · ${(state.total_frames/fps()).toFixed(2)} s · ${p.clips.length} klipp`;
   for(const id of Object.keys(controls)){const n=(w.scope==='project'?p.project_look?.[id]:state.look?.[id])??0;$(id).value=n;$('value-'+id).textContent=id==='exposure'?n.toFixed(2):String(n);}
-  renderAssets();renderLayers();filmstrip?.refresh();
+  renderAssets();renderLayers();filmstrip?.refresh();developUI?.sync();proUI?.sync();
 }
 const controls={exposure:['Exponering',-5,5,.05,'light-controls'],contrast:['Kontrast',-100,100,1,'light-controls'],highlights:['Högdagrar',-100,100,1,'light-controls'],shadows:['Skuggor',-100,100,1,'light-controls'],temperature:['Temperatur',-100,100,1,'color-controls'],tint:['Nyans',-100,100,1,'color-controls'],saturation:['Mättnad',-100,100,1,'color-controls']};
 for(const [id,[label,min,max,step,parent]] of Object.entries(controls)){
@@ -76,20 +79,24 @@ function renderAssets(){
 }
 function renderLayers(){
   const root=$('layers');root.replaceChildren();
+  if($('layer-blend').options.length<2){$('layer-blend').replaceChildren(...state.blend_modes.map(b=>new Option(b.label,b.id)));}
   const selected=state.project.layers.find(l=>l.id===state.project.workspace.selected_layer);$('layer-edit').hidden=!selected;
   $('text-update').hidden=!selected?.text;
   if(selected?.text){$('text-content').value=selected.text.content;$('text-size').value=Math.round(selected.text.size*state.project.width);}
-  if(selected){$('layer-start').value=selected.scope.start;$('layer-end').value=selected.scope.end;$('layer-x').value=Math.round(selected.offset[0]*100);$('layer-y').value=Math.round(selected.offset[1]*100);}
+  $('layer-blend').disabled=!selected;$('layer-blend').value=selected?.blend||'Normal';
+  for(const id of ['layer-duplicate','layer-down','layer-up'])$(id).disabled=!selected;
+  if(selected){$('layer-name').value=selected.name;$('layer-scale').value=Math.round(selected.scale*100);$('layer-rotation').value=selected.rotation;$('layer-start').value=selected.scope.start;$('layer-end').value=selected.scope.end;$('layer-x').value=Math.round(selected.offset[0]*100);$('layer-y').value=Math.round(selected.offset[1]*100);}
   const layers=state.project.layers.filter(l=>l.scope.clip_id===state.active_clip?.id);
   if(!layers.length){const note=document.createElement('p');note.className='hint';note.textContent='Originalet ligger under dina lager.';root.append(note);}
   for(const l of [...layers].reverse()){
     const row=document.createElement('div');row.className='layer-row'+(state.project.workspace.selected_layer===l.id?' active':'');
-    const eye=document.createElement('button');eye.textContent=l.visible?'◉':'○';eye.title='Visa / dölj lager';eye.onclick=handle(()=>command('layer.set',{id:l.id,visible:!l.visible}));
+    const eye=document.createElement('button');eye.innerHTML=icon(l.visible?'eye':'eye-off');eye.title='Visa / dölj lager';eye.onclick=handle(()=>command('layer.set',{id:l.id,visible:!l.visible}));
     const name=document.createElement('button');name.className='layer-name';name.textContent=l.name;name.onclick=handle(()=>command('view.set',{selected_layer:l.id},false));
     const opacity=document.createElement('input');opacity.type='number';opacity.min=0;opacity.max=100;opacity.value=Math.round(l.opacity*100);opacity.className='layer-opacity';opacity.setAttribute('aria-label','Lageropacitet');opacity.onchange=handle(()=>command('layer.set',{id:l.id,opacity:Number(opacity.value)/100}));
-    const del=document.createElement('button');del.textContent='×';del.title='Ta bort lager';del.onclick=handle(()=>command('layer.delete',{id:l.id}));row.append(eye,name,opacity,del);
+    const del=document.createElement('button');del.textContent='×';del.title='Ta bort lager';del.onclick=handle(()=>command('layer.delete',{id:l.id}));const thumb=document.createElement('span');thumb.className='layer-thumb';thumb.innerHTML=icon(l.text?'type':'brush');row.append(eye,thumb,name,opacity,del);
     const scope=document.createElement('div');scope.className='layer-scope';scope.textContent=`Bildruta ${l.scope.start}–${l.scope.end-1}`;root.append(row,scope);
   }
+  const asset=state.project.assets.find(a=>a.id===state.active_clip?.asset_id);if(asset){const base=document.createElement('div');base.className='base-layer';const img=document.createElement('img');img.alt='';if(thumbs.has(asset.id))img.src=thumbs.get(asset.id);const name=document.createElement('span');name.textContent='Original';const label=document.createElement('small');label.textContent='Källa';base.append(img,name,label);root.append(base);}
 }
 const raw=document.createElement('canvas'),rawCtx=raw.getContext('2d',{willReadFrequently:true}),ctx=$('canvas').getContext('2d'),overlay=$('stroke-preview').getContext('2d');
 async function framePixels(frame,width,height,realtime=false){
@@ -111,10 +118,10 @@ async function paint(realtime=false){
   try{
     const p=state.project,ratio=Math.min(1,960/p.width,640/p.height),w=Math.max(1,Math.round(p.width*ratio)),h=Math.max(1,Math.round(p.height*ratio)),frame=p.workspace.playhead;
     const pixels=await framePixels(frame,w,h,realtime);
-    if(token===renderToken){$('canvas').width=w;$('canvas').height=h;ctx.putImageData(new ImageData(pixels,w,h),0,0);positionOverlay();}
+    if(token===renderToken){$('canvas').width=w;$('canvas').height=h;ctx.putImageData(new ImageData(pixels,w,h),0,0);developUI?.histogram(pixels);proUI?.sync();positionOverlay();}
   }finally{rendering=false;if(rerender){rerender=false;await paint(playing);}}
 }
-function positionOverlay(){const c=$('canvas'),o=$('stroke-preview');o.width=c.width;o.height=c.height;const r=c.getBoundingClientRect(),s=$('stage').getBoundingClientRect();o.style.width=r.width+'px';o.style.height=r.height+'px';o.style.left=(r.left-s.left)+'px';o.style.top=(r.top-s.top)+'px';}
+function positionOverlay(){const c=$('canvas'),o=$('stroke-preview');o.width=c.width;o.height=c.height;const r=c.getBoundingClientRect(),s=$('stage').getBoundingClientRect();o.style.width=r.width+'px';o.style.height=r.height+'px';o.style.left=(r.left-s.left+$('stage').scrollLeft)+'px';o.style.top=(r.top-s.top+$('stage').scrollTop)+'px';drawSelection();}
 new ResizeObserver(()=>{if(state)positionOverlay();}).observe($('stage'));
 
 async function importFile(file){
@@ -178,23 +185,49 @@ async function play(){
 
 let points=[],drawing=false,drawingScope;
 function point(e){const r=$('canvas').getBoundingClientRect();return [Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),Math.max(0,Math.min(1,(e.clientY-r.top)/r.height)),e.pointerType==='pen'?Math.max(.01,e.pressure):1];}
-$('canvas').onpointerdown=handle(async e=>{if(exporting||playing||!workspace.has('photo'))return;
-  if(state.project.workspace.scope==='project')throw new Error('Välj bildruta, intervall eller klipp för att måla eller maskera.');
-  if(tool==='mask'&&!state.project.workspace.selected_layer)throw new Error('Välj ett lager för att maskera.');drawingScope=editScope();drawing=true;points=[point(e)];$('canvas').setPointerCapture(e.pointerId);drawOverlay();});
-$('canvas').onpointermove=e=>{if(drawing&&points.length<20000){points.push(point(e));drawOverlay();}};
+function selectTool(next){
+  tool=next;document.querySelectorAll('[data-tool]').forEach(b=>b.classList.toggle('active',b.dataset.tool===tool));
+  const names={move:'Flytta',select:'Markering',brush:'Pensel',erase:'Sudd',mask:'Lagermask',text:'Text',eyedropper:'Pipett',hand:'Hand',zoom:'Zoom'};$('tool-name').textContent=names[tool];
+  $('canvas').style.cursor=({move:'move',hand:'grab',zoom:'zoom-in',text:'text'})[tool]||'crosshair';
+  if(tool==='text'){workspace.open('photo');document.querySelector('.text-controls').open=true;}
+}
+function drawSelection(){const r=state?.project.workspace.pixel_selection;if(!r||drawing)return;const c=$('stroke-preview');overlay.clearRect(0,0,c.width,c.height);overlay.lineWidth=1;overlay.strokeStyle='white';overlay.setLineDash([5,4]);overlay.strokeRect(r[0]*c.width,r[1]*c.height,(r[2]-r[0])*c.width,(r[3]-r[1])*c.height);overlay.setLineDash([]);}
+$('canvas').onpointerdown=handle(async e=>{
+  if(exporting||playing||e.button!==0)return;
+  if(tool==='zoom'){proUI.stepZoom(e.altKey);return;}
+  if(tool==='eyedropper'){const [x,y]=point(e),c=$('canvas'),color=ctx.getImageData(Math.min(c.width-1,Math.floor(x*c.width)),Math.min(c.height-1,Math.floor(y*c.height)),1,1).data;$('color').value='#'+[...color].slice(0,3).map(n=>n.toString(16).padStart(2,'0')).join('');status('Färg hämtad från canvasen');return;}
+  if(tool==='hand'){canvasGesture={tool,x:e.clientX,y:e.clientY,left:$('stage').scrollLeft,top:$('stage').scrollTop};$('canvas').setPointerCapture(e.pointerId);return;}
+  if(tool==='move'){const layer=state.project.layers.find(l=>l.id===state.project.workspace.selected_layer);if(!layer)throw new Error('Välj ett lager att flytta.');canvasGesture={tool,id:layer.id,start:point(e),offset:[...layer.offset]};$('canvas').setPointerCapture(e.pointerId);return;}
+  if(tool==='text'){if(state.project.workspace.scope==='project')throw new Error('Välj bildruta, intervall eller klipp för text.');await command('layer.text',{text:{...textSettings(),position:point(e).slice(0,2)},scope:editScope()});$('text-content').focus();$('text-content').select();return;}
+  if(!workspace.has('photo')){workspace.open('photo');}
+  if(tool!=='select'&&state.project.workspace.scope==='project')throw new Error('Välj bildruta, intervall eller klipp för att måla eller maskera.');
+  if(tool==='mask'&&!state.project.workspace.selected_layer)throw new Error('Välj ett lager för att maskera.');
+  drawingScope=tool==='select'?null:editScope();drawing=true;points=[point(e)];$('canvas').setPointerCapture(e.pointerId);drawOverlay();
+});
+$('canvas').onpointermove=e=>{
+  if(canvasGesture?.tool==='hand'){const g=canvasGesture;$('stage').scrollLeft=g.left+g.x-e.clientX;$('stage').scrollTop=g.top+g.y-e.clientY;return;}
+  if(canvasGesture?.tool==='move'){canvasGesture.end=point(e);return;}
+  if(drawing&&points.length<20000){points.push(point(e));drawOverlay();}
+};
 function drawOverlay(){const c=$('stroke-preview');
-  if(tool==='mask'){overlay.clearRect(0,0,c.width,c.height);const first=points[0],last=points.at(-1);overlay.strokeStyle='#88dfd4';overlay.lineWidth=2;overlay.setLineDash([6,4]);overlay.strokeRect(first[0]*c.width,first[1]*c.height,(last[0]-first[0])*c.width,(last[1]-first[1])*c.height);overlay.setLineDash([]);return;}
-overlay.clearRect(0,0,c.width,c.height);overlay.strokeStyle=$('color').value;overlay.lineWidth=Number($('brush-size').value)/state.project.width*c.width;overlay.lineCap='round';overlay.lineJoin='round';overlay.beginPath();for(const [i,p]of points.entries()){i?overlay.lineTo(p[0]*c.width,p[1]*c.height):overlay.moveTo(p[0]*c.width,p[1]*c.height);}if(points.length===1){overlay.lineTo(points[0][0]*c.width+.1,points[0][1]*c.height+.1);}overlay.stroke();}
-$('canvas').onpointerup=handle(async()=>{if(!drawing)return;drawing=false;if(tool==='mask'){const a=points[0],b=points.at(-1);overlay.clearRect(0,0,$('stroke-preview').width,$('stroke-preview').height);await command('layer.set',{id:state.project.workspace.selected_layer,mask:[Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.max(a[0],b[0]),Math.max(a[1],b[1])]});status('Lagermask sparad');return;}const color=$('color').value.match(/\w\w/g).map(h=>parseInt(h,16)/255);const stroke={points:points.slice(),color:[...color,1],size:Math.max(.0001,Math.min(.5,Number($('brush-size').value)/state.project.width)),erase:tool==='erase'};overlay.clearRect(0,0,$('stroke-preview').width,$('stroke-preview').height);await command('layer.stroke',{stroke,scope:drawingScope});status('Penseldraget sparat i valt intervall');});
-$('canvas').onpointercancel=()=>{drawing=false;points=[];overlay.clearRect(0,0,$('stroke-preview').width,$('stroke-preview').height);};
-document.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>{tool=b.dataset.tool;document.querySelectorAll('[data-tool]').forEach(x=>x.classList.toggle('active',x===b));});
+  if(tool==='mask'||tool==='select'){overlay.clearRect(0,0,c.width,c.height);const first=points[0],last=points.at(-1);overlay.strokeStyle='white';overlay.lineWidth=1;overlay.setLineDash([5,4]);overlay.strokeRect(first[0]*c.width,first[1]*c.height,(last[0]-first[0])*c.width,(last[1]-first[1])*c.height);overlay.setLineDash([]);return;}
+  overlay.clearRect(0,0,c.width,c.height);overlay.strokeStyle=$('color').value;overlay.globalAlpha=Number($('brush-opacity').value)/100;overlay.lineWidth=Number($('brush-size').value)/state.project.width*c.width;overlay.lineCap='round';overlay.lineJoin='round';overlay.beginPath();for(const [i,p]of points.entries()){i?overlay.lineTo(p[0]*c.width,p[1]*c.height):overlay.moveTo(p[0]*c.width,p[1]*c.height);}if(points.length===1)overlay.lineTo(points[0][0]*c.width+.1,points[0][1]*c.height+.1);overlay.stroke();overlay.globalAlpha=1;
+}
+$('canvas').onpointerup=handle(async()=>{
+  if(canvasGesture){const g=canvasGesture;canvasGesture=null;if(g.tool==='move'&&g.end){await command('layer.set',{id:g.id,offset:g.offset.map((n,i)=>Math.max(-1,Math.min(1,n+g.end[i]-g.start[i])))});}return;}
+  if(!drawing)return;drawing=false;
+  if(tool==='mask'||tool==='select'){const a=points[0],b=points.at(-1),rect=[Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.max(a[0],b[0]),Math.max(a[1],b[1])];overlay.clearRect(0,0,$('stroke-preview').width,$('stroke-preview').height);if(rect[0]===rect[2]||rect[1]===rect[3])return;if(tool==='select')await command('view.set',{pixel_selection:rect},false);else await command('layer.set',{id:state.project.workspace.selected_layer,mask:rect});drawSelection();status(tool==='select'?'Bildområdet markerat · nya penseldrag begränsas till markeringen':'Lagermask sparad');return;}
+  const color=$('color').value.match(/\w\w/g).map(h=>parseInt(h,16)/255);const stroke={points:points.slice(),color:[...color,1],size:Math.max(.0001,Math.min(.5,Number($('brush-size').value)/state.project.width)),erase:tool==='erase',hardness:Number($('brush-hardness').value)/100,opacity:Number($('brush-opacity').value)/100,flow:Number($('brush-flow').value)/100,pressure_size:$('brush-pressure').checked,selection:state.project.workspace.pixel_selection};overlay.clearRect(0,0,$('stroke-preview').width,$('stroke-preview').height);await command('layer.stroke',{stroke,scope:drawingScope});drawSelection();status('Penseldraget sparat i valt intervall');
+});
+$('canvas').onpointercancel=()=>{drawing=false;canvasGesture=null;points=[];overlay.clearRect(0,0,$('stroke-preview').width,$('stroke-preview').height);drawSelection();};
+document.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>selectTool(b.dataset.tool));
 document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=handle(async()=>{workspace.open(b.dataset.mode);await command('view.set',{mode:b.dataset.mode,left_visible:true,right_visible:true},false);}));
 $('scope').onchange=handle(()=>command('view.set',{scope:$('scope').value},false));
 for(const id of ['import','add-media','empty-import'])bind(id,()=>$('media-input').click());
 $('media-input').onchange=handle(async()=>{for(const file of $('media-input').files)await importFile(file);$('media-input').value='';});
 $('stage').ondragover=e=>{e.preventDefault();};$('stage').ondrop=handle(async e=>{e.preventDefault();for(const f of e.dataTransfer.files)await importFile(f);});
 bind('blank',()=>command('asset.add',{asset:{id:crypto.randomUUID(),name:'Tom bild',kind:'blank',width:state.project.width,height:state.project.height,bytes:0,source_fps:null},frames:Math.round(fps())}));
-bind('demo',async()=>{const c=document.createElement('canvas');c.width=1280;c.height=720;const x=c.getContext('2d'),g=x.createLinearGradient(0,0,0,720);g.addColorStop(0,'#d1e6e9');g.addColorStop(.55,'#efe5c2');g.addColorStop(.56,'#6c9080');g.addColorStop(1,'#263c35');x.fillStyle=g;x.fillRect(0,0,1280,720);x.fillStyle='#eaeac7';x.beginPath();x.arc(925,215,60,0,Math.PI*2);x.fill();x.fillStyle='#365844';x.beginPath();x.moveTo(0,420);x.lineTo(300,300);x.lineTo(760,495);x.lineTo(1280,360);x.lineTo(1280,720);x.lineTo(0,720);x.fill();const blob=await new Promise(r=>c.toBlob(r));await importFile(new File([blob],'Landskap.png',{type:'image/png'}));});
+bind('demo',async()=>{const response=await fetch(new URL('demo/great-wave.jpg',document.baseURI));if(!response.ok)throw new Error('Exempelbilden kunde inte öppnas');const blob=await response.blob();await importFile(new File([blob],'The Great Wave.jpg',{type:'image/jpeg'}));});
 bind('new',async()=>{if(dirty){await save();}await stop();clearSources();filmstrip?.reset();thumbs.clear();projectId=crypto.randomUUID();await command('project.new',{},false);$('save-status').textContent='Nytt projekt';status('Skapa en bild eller importera media');});
 bind('recover',async()=>{if(recovery){await openJson(recovery.json,recovery.original_id);$('recover').hidden=true;status('Projektet återställt från automatisk återställningspunkt');}});
 bind('save',save);bind('undo',async()=>{await stop();await command('undo');});bind('redo',()=>command('redo'));
@@ -233,6 +266,12 @@ bind('text-update',()=>command('layer.set',{id:state.project.workspace.selected_
 bind('layer-scope-apply',()=>command('layer.scope',{id:state.project.workspace.selected_layer,start:Number($('layer-start').value),end:Number($('layer-end').value)}));
 bind('mask-clear',()=>command('layer.set',{id:state.project.workspace.selected_layer,mask:null}));
 for(const id of ['layer-x','layer-y'])$(id).onchange=handle(()=>command('layer.set',{id:state.project.workspace.selected_layer,offset:[Number($('layer-x').value)/100,Number($('layer-y').value)/100]}));
+$('layer-blend').onchange=handle(()=>command('layer.set',{id:state.project.workspace.selected_layer,blend:$('layer-blend').value}));
+$('layer-name').onchange=handle(()=>command('layer.set',{id:state.project.workspace.selected_layer,name:$('layer-name').value}));
+for(const id of ['layer-scale','layer-rotation'])$(id).onchange=handle(()=>command('layer.set',{id:state.project.workspace.selected_layer,scale:Number($('layer-scale').value)/100,rotation:Number($('layer-rotation').value)}));
+bind('layer-duplicate',()=>command('layer.duplicate',{id:state.project.workspace.selected_layer}));
+for(const [id,delta] of [['layer-up',1],['layer-down',-1]])bind(id,()=>{const layers=state.project.layers,index=layers.findIndex(l=>l.id===state.project.workspace.selected_layer);return command('layer.move',{id:state.project.workspace.selected_layer,index:Math.max(0,Math.min(layers.length-1,index+delta))});});
+bind('selection-clear',async()=>{await command('view.set',{pixel_selection:null},false);overlay.clearRect(0,0,$('stroke-preview').width,$('stroke-preview').height);});
 bind('reset-look',()=>command('develop.reset',{scope:editScope()}));
 bind('export',async()=>{await stop();$('export-description').textContent=`${state.project.width} × ${state.project.height} · ${fps().toFixed(3)} fps`;$('export-dialog').showModal();});bind('export-close',()=>$('export-dialog').close());
 bind('export-image',async()=>{const p=state.project;const pixels=await framePixels(p.workspace.playhead,p.width,p.height);const c=document.createElement('canvas');c.width=p.width;c.height=p.height;c.getContext('2d').putImageData(new ImageData(pixels,p.width,p.height),0,0);download(await new Promise(r=>c.toBlob(r,'image/png')),safeName()+'.png');status('PNG exporterad');});
@@ -258,10 +297,14 @@ async function exportVideo(file){
 window.addEventListener('beforeunload',e=>{if(dirty||exporting){e.preventDefault();e.returnValue='';}});
 window.addEventListener('keydown',handle(async e=>{
   if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)||document.querySelector('dialog[open]'))return;
-  if(e.ctrlKey||e.metaKey){if(e.key.toLowerCase()==='s'){e.preventDefault();await save();}else if(e.key.toLowerCase()==='z'){e.preventDefault();await command(e.shiftKey?'redo':'undo');}return;}
+  if(e.ctrlKey||e.metaKey){if(e.key.toLowerCase()==='n'){e.preventDefault();$('new').click();}else if(e.key.toLowerCase()==='o'){e.preventDefault();$('open').click();}else if(e.key.toLowerCase()==='j'){e.preventDefault();$('layer-duplicate').click();}else if(e.key.toLowerCase()==='d'){e.preventDefault();$('selection-clear').click();}else if(e.key.toLowerCase()==='s'){e.preventDefault();await save();}else if(e.key.toLowerCase()==='z'){e.preventDefault();await command(e.shiftKey?'redo':'undo');}return;}
+  if(e.altKey&&e.key.toLowerCase()==='i'){e.preventDefault();selectTool('eyedropper');return;}
+  const hotkeys={v:'move',m:'select',b:'brush',e:'erase',t:'text',h:'hand',z:'zoom'};if(hotkeys[e.key.toLowerCase()]){e.preventDefault();selectTool(hotkeys[e.key.toLowerCase()]);return;}if(e.key==='Tab'){e.preventDefault();$('focus').click();return;}if(e.key.toLowerCase()==='c'){e.preventDefault();$('split').click();return;}
   if(e.code==='Space'){e.preventDefault();await play();}else if(e.key==='ArrowRight')$('next').click();else if(e.key==='ArrowLeft')$('prev').click();else if(e.key.toLowerCase()==='i')$('set-in').click();else if(e.key.toLowerCase()==='o')$('set-out').click();
 }));
 workspace=createWorkspace({status,getPresentation:()=>{const {timeline_visible,left_visible,right_visible,timeline_height}=state.project.workspace;return {timeline_visible,left_visible,right_visible,timeline_height};},applyPresentation:params=>command('view.set',params,false)});
 filmstrip=createFilmstrip({getState:()=>state,command,stop,rpc,status,isPlaying:()=>playing||exporting});
-window.creativeStudio={workspace,filmstrip,execute:command,inspect:()=>structuredClone(state),save:()=>rpc('save'),open:openJson,importFile,framePixels,exportVideo};
+developUI=createDevelopUI({getState:()=>state,command,editScope,status});
+proUI=createProUI({getState:()=>state,command,selectTool,status,updateOverlay:positionOverlay});
+window.creativeStudio={selectTool,developUI,proUI,workspace,filmstrip,execute:command,inspect:()=>structuredClone(state),save:()=>rpc('save'),open:openJson,importFile,framePixels,exportVideo};
 handle(async()=>{state=await rpc('inspect');const legacy=localStorage.getItem('creative-studio-layout'),l=workspace.inspect().presentation||(legacy?JSON.parse(legacy):null);if(l){state=await rpc('command',{command:'view.set',params:{timeline_visible:l.timeline_visible,left_visible:l.left_visible,right_visible:l.right_visible,timeline_height:l.timeline_height}});}if(matchMedia('(max-width:780px)').matches)state=await rpc('command',{command:'view.set',params:{left_visible:false,right_visible:false}});update();const list=await projects();recovery=list.filter(p=>p.recovery&&!list.some(saved=>saved.id===p.original_id&&saved.modified>=p.modified)).sort((a,b)=>b.modified-a.modified)[0];$('recover').hidden=!recovery;status('Redo · importera media eller skapa en bild');})();

@@ -18,7 +18,7 @@ PhotoCrafts `Session` äger dokument, LightCrafts `Session` en katalog och FilmC
 
 PhotoCrafts `Document` som byggs vid rendering är en temporär kompositionsvy, utan egen Session, historik eller sparformat. Den försvinner efter bildrutan. Originalets avkodade pixlar, LightCraft-resultatet och pensellagren skickas genom samma funktion för förhandsvisning, PNG och videobildrutor.
 
-FilmCrafts fullständiga projekt-, render- och exportbibliotek är **inte** anslutna i denna version. Sekventiell klipptid, delning och muting finns i det lilla gemensamma integrationslagret. Att koppla in dessa bibliotek kräver en adapter från den gemensamma modellen till en härledd FilmCraft-renderingsvy och en `SourceProvider`. Adaptern får inte introducera ett separat sparat projekt eller dubbla undo-stackar.
+FilmCrafts fullständiga render- och exportbibliotek är **inte** anslutna i denna version. Projekt/edit används genom den härledda trimningsadaptern. Sekventiell klipptid, delning och muting finns i det lilla gemensamma integrationslagret. Att koppla in dessa bibliotek kräver en adapter från den gemensamma modellen till en härledd FilmCraft-renderingsvy och en `SourceProvider`. Adaptern får inte introducera ett separat sparat projekt eller dubbla undo-stackar.
 
 ## Webbmedier och resursgränser
 
@@ -34,11 +34,11 @@ Projektets bildrutetid kommer från FilmCraft. Exportens mikrosekunder räknas m
 
 AudioDecoder läser komprimerade ljudpaket via Blob-delar, normaliserar MP4-edit-listans tidsförskjutning, beskär vid klippets originaloffset och placerar samples på tidslinjens 48 kHz-klocka. Mutade klipp och stillbilder fylls med tystnad. AudioEncoder kodar en sammanhängande Opus-ström; den flushas en gång vid slutet för att undvika upprepad codec-padding. Decoder/encoder-köer töms med backpressure. Video/audio-dataobjekt stängs efter användning.
 
-Förhandsvisning följer videons medieklocka så att långsam CPU-rendering inte driver spelhuvudet framför ljudet. Den ger inte en garanti om att varje bildruta hinner visas under uppspelning. Exporten gör det. Kodad export hålls i ett ArrayBuffer och begränsas därför till två minuter tills OPFS/streaming-sink implementerats.
+Förhandsvisning följer videons medieklocka så att långsam CPU-rendering inte driver spelhuvudet framför ljudet. Den ger inte en garanti om att varje bildruta hinner visas under uppspelning. Exporten gör det. Nedladdning i minnet begränsas till två minuter. Direktlagring till en sökbar filström stödjer längre sekvenser med begränsade muxer- och codec-köer.
 
 ## Utökning utan att byta grundprincip
 
-Schemat behöver senare nya operationstyper för text, former, masker, transformering, keyframes och tracking; dessa finns ännu inte som tomma låtsasobjekt. De ska använda samma scope och tydliga enheter/tidsbas. Keyframes samplas vid renderingtiden. Tracking ska producera tidsbaserade parametrar; penseldrag får aldrig automatiskt tolkas som rörelsespårning.
+Text, rektangulär mask och centrerad skala/rotation finns nu i gemensamma lageroperationer. Schemat behöver senare former, fria masker, keyframes och tracking; dessa finns ännu inte som tomma låtsasobjekt. De ska använda samma scope och tydliga enheter/tidsbas. Keyframes samplas vid renderingtiden. Tracking ska producera tidsbaserade parametrar; penseldrag får aldrig automatiskt tolkas som rörelsespårning.
 
 När fler spår och övergångar införs ska implicit sekventiell klipptid ersättas genom en explicit schemamigrering. GPU-, HDR-/ICC- och RAW-adaptrar ska gå bakom samma renderingstjänst. Inga ändringar av uppströmsprogrammens fungerande modeller behövs för den nuvarande versionen.
 
@@ -50,3 +50,12 @@ klipp och operationer, med synliga tidsminiatyrer och separat begränsad avkodar
 projekt sparas eller äger historik. Text och masker renderas av PhotoCraft.
 Utdata från `web/export.js` kan gå till en sökbar filström, med interfolierad
 ljud-/videokodning och dränerade 1 MiB-utdataköer.
+
+## 0.3 — Pro-gränssnitt utan extra projektmodell
+
+`web/pro-ui.js` projicerar menyer, verktygsval och canvaszoom.
+`web/develop-ui.js` bygger LightCrafts reglage från inspekterade motorgränser
+och visar histogram/kurvor. Utökade fotografiska parametrar ligger i samma
+sparsamma justeringsoperationer som tidigare. UI håller ingen egen framkallningsfil.
+PhotoCrafts BrushSettings, Affine och BlendMode används i den befintliga
+renderingsvägen. Både temporala och spatiala penselmål sparas explicit per drag.

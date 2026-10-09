@@ -234,7 +234,7 @@ impl Project {
             .chain(self.clips.iter().map(|c| &c.id))
             .chain(self.layers.iter().map(|l| &l.id))
         {
-            if id.is_empty() || !ids.insert(id) {
+            if id.is_empty() || id.len() > 160 || !ids.insert(id) {
                 return Err("Projektet har dubbla eller tomma identifierare".into());
             }
         }
@@ -274,12 +274,21 @@ impl Project {
         {
             return Err("Ogiltigt verktygsläge eller omfattning".into());
         }
+        if self
+            .workspace
+            .selected_layer
+            .as_ref()
+            .is_some_and(|id| !self.layers.iter().any(|l| &l.id == id))
+        {
+            return Err("Det valda lagret finns inte".into());
+        }
         for a in &self.assets {
             if !["image", "video", "blank"].contains(&a.kind.as_str())
                 || a.width == 0
                 || a.height == 0
                 || a.width > 32768
                 || a.height > 32768
+                || u64::from(a.width) * u64::from(a.height) > 16_777_216
             {
                 return Err("Ogiltig medietillgång".into());
             }

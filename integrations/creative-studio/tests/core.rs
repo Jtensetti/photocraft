@@ -136,3 +136,31 @@ fn white_balance_reaches_the_real_pipeline_and_preserves_alpha() {
     assert!(warm[0] > warm[2]);
     assert_eq!(warm[3], 123);
 }
+
+#[test]
+fn large_brush_history_stays_portable_and_reopenable() {
+    let mut studio = setup();
+    let points = vec![[0.1, 0.2, 1.0]; 12_000];
+    for _ in 0..30 {
+        cmd(
+            &mut studio,
+            "layer.stroke",
+            json!({"stroke":{"color":[1,0,0,1],"size":0.01,"erase":false,"points":points}}),
+        );
+    }
+    let saved = studio.save().unwrap();
+    assert!(saved.len() < 32_000_000);
+    let mut restored = Studio::new();
+    restored.open(&saved).unwrap();
+    assert_eq!(restored.inspect().unwrap(), studio.inspect().unwrap());
+    assert!(
+        serde_json::from_str::<Value>(&saved).unwrap()["undo"]
+            .as_array()
+            .unwrap()
+            .len()
+            < 30
+    );
+    cmd(&mut restored, "undo", json!({}));
+    cmd(&mut restored, "redo", json!({}));
+    assert_eq!(restored.inspect().unwrap(), studio.inspect().unwrap());
+}

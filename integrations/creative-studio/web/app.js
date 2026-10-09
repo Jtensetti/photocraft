@@ -106,7 +106,7 @@ async function paint(realtime=false){
   if(rendering){rerender=true;return;}
   rendering=true;const token=++renderToken;
   try{
-    const p=state.project,ratio=Math.min(1,960/p.width,640/p.height),w=Math.round(p.width*ratio),h=Math.round(p.height*ratio),frame=p.workspace.playhead;
+    const p=state.project,ratio=Math.min(1,960/p.width,640/p.height),w=Math.max(1,Math.round(p.width*ratio)),h=Math.max(1,Math.round(p.height*ratio)),frame=p.workspace.playhead;
     const pixels=await framePixels(frame,w,h,realtime);
     if(token===renderToken){$('canvas').width=w;$('canvas').height=h;ctx.putImageData(new ImageData(pixels,w,h),0,0);positionOverlay();}
   }finally{rendering=false;if(rerender){rerender=false;await paint(playing);}}

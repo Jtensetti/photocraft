@@ -13,6 +13,15 @@ use model::*;
 use serde_json::{Value, json};
 use wasm_bindgen::prelude::*;
 
+const PROJECT_BYTE_LIMIT: usize = 15_000_000;
+const HISTORY_BYTE_LIMIT: usize = 15_000_000;
+
+fn project_bytes(project: &Project) -> Result<usize, String> {
+    serde_json::to_vec(project)
+        .map(|v| v.len())
+        .map_err(|e| e.to_string())
+}
+
 #[wasm_bindgen]
 pub struct Studio {
     project: Project,
@@ -71,8 +80,16 @@ impl Studio {
             return Err("För stor historik".into());
         }
         project.validate()?;
+        if project_bytes(&project)? > PROJECT_BYTE_LIMIT {
+            return Err("Projektets redigeringar är för stora".into());
+        }
+        let mut history_bytes = 0;
         for p in undo.iter().chain(&redo) {
             p.validate()?;
+            history_bytes += project_bytes(p)?;
+        }
+        if history_bytes > HISTORY_BYTE_LIMIT {
+            return Err("Projektets historik är för stor".into());
         }
         self.project = project;
         self.undo = undo;
@@ -102,6 +119,7 @@ impl Studio {
                 to.push(self.project.clone());
                 self.project = p;
             }
+            self.trim_history()?;
             return Ok(());
         }
         let mut p = self.project.clone();
@@ -359,6 +377,9 @@ impl Studio {
             _ => return Err(format!("Kommandot stöds inte: {cmd}")),
         }
         p.validate()?;
+        if content && project_bytes(&p)? > PROJECT_BYTE_LIMIT {
+            return Err("Projektets redigeringar är för stora. Ta en säkerhetskopia och börja ett nytt projekt.".into());
+        }
         if content {
             if cmd == "project.new" {
                 self.undo.clear();
@@ -372,6 +393,40 @@ impl Studio {
             }
         }
         self.project = p;
+        if content {
+            self.trim_history()?;
+        }
+        Ok(())
+    }
+
+    fn trim_history(&mut self) -> Result<(), String> {
+        let undo_sizes: Vec<_> = self
+            .undo
+            .iter()
+            .map(project_bytes)
+            .collect::<Result<_, _>>()?;
+        let redo_sizes: Vec<_> = self
+            .redo
+            .iter()
+            .map(project_bytes)
+            .collect::<Result<_, _>>()?;
+        let mut total: usize = undo_sizes.iter().chain(&redo_sizes).sum();
+        let (mut u, mut r) = (0, 0);
+        // Discard the oldest snapshots first. The current project and the
+        // closest undo/redo states stay intact whenever they fit the budget.
+        while total > HISTORY_BYTE_LIMIT {
+            if let Some(size) = undo_sizes.get(u) {
+                total -= size;
+                u += 1;
+            } else if let Some(size) = redo_sizes.get(r) {
+                total -= size;
+                r += 1;
+            } else {
+                break;
+            }
+        }
+        self.undo.drain(..u);
+        self.redo.drain(..r);
         Ok(())
     }
 }

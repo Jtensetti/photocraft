@@ -2,7 +2,7 @@
 
 ## Persistens, schema 1
 
-`Studio.save()` returnerar JSON med `format: "creative-studio"`, `project`, `undo` och `redo`. `project.schema_version` är 1. Nyare/okända scheman avvisas; ingen tyst nedgradering sker. `open()` validerar aktuellt projekt och historik innan någon state ändras. Gränsen för importerad projekt-JSON är 32 MB.
+`Studio.save()` returnerar JSON med `format: "creative-studio"`, `project`, `undo` och `redo`. `project.schema_version` är 1. Nyare/okända scheman avvisas; ingen tyst nedgradering sker. `open()` validerar aktuellt projekt och historik innan någon state ändras. Gränsen för importerad projekt-JSON är 32 MB. Aktuellt projekt får innehålla högst 15 MB serialiserad metadata/operationer och den gemensamma historiken högst 15 MB; äldre snapshots tas bort automatiskt vid innehållsändringar.
 
 | Fält | Betydelse |
 |---|---|
@@ -36,7 +36,7 @@ Penselpunkter är normaliserade `[x, y, pressure]`, färg är raka RGBA-komponen
 | `develop.set` | values: partiella exposure/contrast/highlights/shadows/temperature/tint/saturation; omfattning från workspace |
 | `layer.new` | valfritt name; omfattning från workspace |
 | `layer.stroke` | stroke med points/color/size/erase; skapar ett matchande lager om valt lager har annan omfattning |
-| `layer.set` | id, valfria name/visible/opacity |
+| `layer.set` | id, valfria visible/opacity |
 | `layer.delete` | id |
 | `clip.split` | delar aktivt klipp vid spelhuvudet och bevarar redigeringarnas tider |
 | `clip.mute` | id; växlar ljud av/på |

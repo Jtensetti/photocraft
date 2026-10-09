@@ -27,7 +27,7 @@
 | Layout | Dölj/visa, höjd, maximera och spara; ingen flyttbar/dockbar panelmotor. |
 | Färg | Flyttalsbearbetning internt; 8-bitars sRGB canvas in/ut. Inte färgkritisk HDR/ICC/RAW-leverans. |
 | Återlänkning | Storlek/typ/dimensioner jämförs, ingen innehållshash ännu. |
-| Resurser | Bounded sources/preview/export och metadatahistoria; OPFS och strukturellt delad historik behövs för större projekt. |
+| Resurser | Bounded sources/preview/export och metadatahistoria; Historiken har en 15 MB-budget. OPFS och strukturellt delad historik behövs för större projekt. |
 
 ## Nästa leveranser, med acceptanskriterier
 
@@ -36,6 +36,6 @@
 3. **PhotoCraft-objekt och masker:** återanvänd text/vector/maskbibliotek bakom nya gemensamma operationstyper. Transformationer och lagergrupper. Testa intervallbaserad text, mask och faktisk PNG/videoexport, inklusive transparenta bilder.
 4. **LightCraft och färg:** kurvor, lokala masker, presets och synkronisering, RAW/16-bitars/ICC/linjär HDR-kedja. Behåll upstream-rendering; testa mot numeriska och visuella referenser utan att klippa högdagrar i canvasövergången.
 5. **Arbetsyta och animation:** dockning, namngivna layouter, keyframes med uttrycklig interpolation. Tracking som separat, opt-in producer av tidsbaserade parametrar. Testa att tidslinjedöljning och lägesbyte aldrig ändrar renderat innehåll.
-6. **Projektformat och driftsäkerhet:** migrationsregister, innehållshash för relink, autosave/journal och worker-återstart, historik med strukturell delning/bytebudget, import som atomisk lagringstransaktion. Testa full disk, stängning mitt i save/backup, saknad media och korrupt fil.
+6. **Projektformat och driftsäkerhet:** migrationsregister, innehållshash för relink, autosave/journal och worker-återstart, historik med strukturell delning, import som atomisk lagringstransaktion. Testa full disk, stängning mitt i save/backup, saknad media och korrupt fil.
 
 Avancerade masker, text, retuschverktyg, keyframes, tracking, AI-generering, marknadsplats och kontofunktioner visas inte som fungerande verktyg i första UI. AI, marknadsplats och användarkonton ingår inte i projektets plan.

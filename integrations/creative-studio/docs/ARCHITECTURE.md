@@ -26,7 +26,7 @@ HTMLVideoElement och ImageBitmap avkodar original på begäran. Ett MP4-index l�
 
 IndexedDB innehåller original som Blob-objekt och sparade projekt som JSON. Backupen består av en längdprefixad JSON-header och Blob-delar av originalen. Återställning validerar först projektet i Rust. Det finns ingen nätverksväg för uppladdning av användarens media.
 
-Förhandsvisning begränsas till 960×640. Projekt och bildrutebuffert begränsas till 16 777 216 pixlar, med högst 16 384 pixlar per sida. Projektgränser finns också för objekt, tidslinjelängd och penselpunkter. Historiken behåller högst 30 innehållskommandon, med hela metadata-/operationssnapshots, aldrig kopior av videofiler eller avkodade bildrutor. Strukturell delning och en bytebudget för historiken är nästa optimering för stora penselprojekt.
+Förhandsvisning begränsas till 960×640. Projekt och bildrutebuffert begränsas till 16 777 216 pixlar, med högst 16 384 pixlar per sida. Projektgränser finns också för objekt, tidslinjelängd och penselpunkter. Historiken behåller högst 30 innehållskommandon och 15 MB serialiserade metadata-/operationssnapshots, aldrig kopior av videofiler eller avkodade bildrutor. Äldre snapshots tas bort när budgeten nås. Aktuella projektoperationer begränsas också till 15 MB, så sparformatet alltid kan öppnas inom 32 MB-gränsen. Strukturell delning är nästa optimering för stora penselprojekt.
 
 ## Tidsstämplar och ljud
 

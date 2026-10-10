@@ -6,7 +6,7 @@ const ready = (async()=>{
   const build=new URL(import.meta.url).pathname;url.searchParams.set('build',build);
   const {default:init,Studio}=await import(/* @vite-ignore */ url.href);
   const binary=await loadEngine(new URL('.',url),progress=>self.postMessage({loading:Math.round(progress*100)}),build);
-  await init({module_or_path:binary}); studio = new Studio();
+  await init({module_or_path:binary}); studio = new Studio();self.postMessage({ready:true});
 })();
 self.onmessage = async ({data: m}) => {
   try {

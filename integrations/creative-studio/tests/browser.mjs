@@ -75,4 +75,4 @@ try {
   assert.equal((await page.evaluate(()=>creativeStudio.inspect())).project.layers.length,1);
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({result:'PASS',frames:50,pixels,export_samples:{before,painted,inside,after},duration:info.format.duration,streams:info.streams.map(s=>s.codec_type),export_frame_count:counted.streams[0].nb_read_frames,audio_rms:rms,browser_errors:errors},null,2));
-} finally {await browser.close();await server.close();}
+} catch(error) {console.log('START/STATE',JSON.stringify({status:await page.locator('#status').textContent(),errors}));await page.screenshot({path:'test-results/browser-error.png'});throw error;} finally {await browser.close();await server.close();}

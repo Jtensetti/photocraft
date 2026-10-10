@@ -28,19 +28,32 @@ jobs:
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
       - run: cargo install wasm-bindgen-cli --version 0.2.129 --locked
-      - run: npm run build:wasm
+      - id: wasm
+        run: npm run build:wasm
+      - run: npm run test:engine
+        if: ${{ !cancelled() && steps.wasm.outcome == 'success' }}
       - run: python3 scripts/license-notices.py
       - run: npx playwright install --with-deps chromium
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: npm run test:browser
+        if: ${{ !cancelled() && steps.wasm.outcome == 'success' }}
       - run: npm run test:workspace
+        if: ${{ !cancelled() && steps.wasm.outcome == 'success' }}
       - run: npm run test:pro
+        if: ${{ !cancelled() && steps.wasm.outcome == 'success' }}
       - run: npm run test:native
+        if: ${{ !cancelled() && steps.wasm.outcome == 'success' }}
       - run: npm run test:graphics
+        if: ${{ !cancelled() && steps.wasm.outcome == 'success' }}
       - run: npm run test:wasm
-      - run: npm run build
+        if: ${{ !cancelled() && steps.wasm.outcome == 'success' }}
+      - id: web
+        run: npm run build
+        if: ${{ !cancelled() && steps.wasm.outcome == 'success' }}
       - run: npm run test:production
+        if: ${{ !cancelled() && steps.web.outcome == 'success' }}
       - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && steps.web.outcome == 'success' }}
         with:
           name: creative-studio-web
           path: dist/

@@ -5,7 +5,7 @@ export async function loadEngine(base,progress=()=>{},build=''){
  if(response.status===404)return asset('creative_studio_bg.wasm');
  if(!response.ok)throw new Error('Redigeringsmotorn kunde inte hämtas');
  const manifest=await response.json();
- if(!Number.isSafeInteger(manifest.bytes)||manifest.bytes<8||manifest.bytes>100*1024*1024||!Array.isArray(manifest.chunks)||manifest.chunks.length<1||manifest.chunks.length>8)throw new Error('Ogiltig motorversion');
+ if(!Number.isSafeInteger(manifest.bytes)||manifest.bytes<8||manifest.bytes>8*20*1024*1024||!Array.isArray(manifest.chunks)||manifest.chunks.length<1||manifest.chunks.length>8)throw new Error('Ogiltig motorversion');
  const output=new Uint8Array(manifest.bytes);let offset=0;
  for(const chunk of manifest.chunks){
    if(!/^engine-\d+\.wasmpart$/.test(chunk.name)||!Number.isSafeInteger(chunk.bytes)||chunk.bytes<1||chunk.bytes>20*1024*1024||offset+chunk.bytes>output.length)throw new Error('Ogiltig motordel');

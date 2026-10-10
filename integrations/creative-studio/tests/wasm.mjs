@@ -21,4 +21,13 @@ for(const mode of ['photo','light','film','vector','design']){const before=view(
 const saved=s.save(),reopened=new Studio();reopened.open(saved);assert.deepEqual(Array.from(reopened.render(64,48,5,raw)),both);
 cmd('undo');assert.deepEqual(render(5),outline);cmd('redo');assert.deepEqual(render(5),both);
 const catalog=JSON.parse(s.native_catalog());for(const engine of ['photo','light','film','vector','design'])assert.ok(catalog[engine].length>100);
-console.log(JSON.stringify({result:'PASS',engines:Object.fromEntries(['photo','light','film','vector','design'].map(e=>[e,catalog[e].length])),shared_pixels:true,scope:true,save:true,undo:true,validated_chunks:chunks.length}));
+// A vector layer is an editable PhotoCraft target and part of LightCraft's input.
+const cross=new Studio(),crossCmd=(id,p={})=>JSON.parse(cross.execute(id,JSON.stringify(p))),crossView=()=>JSON.parse(cross.inspect()),crossRender=f=>Array.from(cross.render(64,48,f,raw));
+crossCmd('project.new',{width:64,height:48});crossCmd('asset.add',{asset:{id:'b',name:'Cross-engine canvas',kind:'blank',width:64,height:48,bytes:0,source_fps:null},frames:20});crossCmd('selection.set',scope);crossCmd('view.set',{scope:'range'});crossCmd('seek',{frame:5});
+for(const [command,params]of [['paint.setFill',{color:'#ff0000'}],['shape.rectangle',{x:4,y:4,width:20,height:20}]])cross.execute_graphics('vector',command,JSON.stringify({params,scope}));
+const crossRed=crossRender(5),outside=crossRender(10),target=crossView().project.graphic_layers[0].id;
+crossCmd('view.set',{mode:'photo',native_target:target});cross.execute_pixels('photo','image.adjustments.invert',JSON.stringify({params:{},scope}),64,48,5,raw);
+const crossInverted=crossRender(5);assert.ok(crossInverted[(8*64+8)*4]<20&&crossInverted[(8*64+8)*4+1]>240);assert.deepEqual(crossRender(10),outside);
+crossCmd('develop.set',{values:{exposure:-1},scope});const crossDarker=crossRender(5);assert.notDeepEqual(crossDarker,crossInverted);assert.deepEqual(crossRender(10),outside);
+const crossReopen=new Studio();crossReopen.open(cross.save());assert.deepEqual(Array.from(crossReopen.render(64,48,5,raw)),crossDarker);crossCmd('undo');assert.deepEqual(crossRender(5),crossInverted);crossCmd('undo');assert.deepEqual(crossRender(5),crossRed);
+console.log(JSON.stringify({result:'PASS',engines:Object.fromEntries(['photo','light','film','vector','design'].map(e=>[e,catalog[e].length])),shared_pixels:true,cross_engine_editing:true,scope:true,save:true,undo:true,validated_chunks:chunks.length}));

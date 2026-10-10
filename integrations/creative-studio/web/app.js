@@ -14,14 +14,14 @@ import {metadata,source,seek,pauseAll,clearSources,event} from './media.js';
 
 const $=id=>document.getElementById(id);
 const worker=new Worker(new URL('./worker.js',import.meta.url),{type:'module'});
-const pending=new Map();let serial=0,state,dirty=false,busy=false,playing=false,playToken=0,exporting=false,cancelExport=false,tool='brush',renderToken=0,rendering=false,rerender=false;
+const pending=new Map();let serial=0,state,engineReady=false,dirty=false,busy=false,playing=false,playToken=0,exporting=false,cancelExport=false,tool='brush',renderToken=0,rendering=false,rerender=false;
 let workspace,filmstrip,developUI,proUI,nativeUI,audioMixer,recoveryTimer,recovery,canvasGesture;
 let projectId=crypto.randomUUID(); const thumbs=new Map();
 const attachedSources=new Set(),sourceReads=new Map();
 async function attachSource(asset,blob){if(attachedSources.has(asset.id)||!asset.bytes)return;blob??=await getMedia(asset.id);if(!blob)throw new Error('Originalet saknas: '+asset.name);await rpc('attach-media',{asset:asset.id,blob});attachedSources.add(asset.id);}
-worker.onmessage=({data:m})=>{if(m.loading!=null){status('Laddar redigeringsmotorer · '+m.loading+' %');return;}const p=pending.get(m.id);if(!p)return;pending.delete(m.id);clearTimeout(p.timer);m.error?p.reject(new Error(m.error)):p.resolve(m.result);};
+worker.onmessage=({data:m})=>{if(m.ready){engineReady=true;return;}if(m.loading!=null){status('Laddar redigeringsmotorer · '+m.loading+' %');return;}const p=pending.get(m.id);if(!p)return;pending.delete(m.id);clearTimeout(p.timer);m.error?p.reject(new Error(m.error)):p.resolve(m.result);};
 worker.onerror=()=>{for(const p of pending.values()){clearTimeout(p.timer);p.reject(new Error('Redigeringsmotorn stannade. Ladda om och öppna senast sparade projekt.'));}pending.clear();status('Redigeringsmotorn kunde inte köras',true);};
-function rpc(op,params={},transfer=[]) {return new Promise((resolve,reject)=>{const id=++serial;const timer=setTimeout(()=>{pending.delete(id);reject(new Error('Redigeringsmotorn svarar inte'));},60000);pending.set(id,{resolve,reject,timer});worker.postMessage({id,op,...params},transfer);});}
+function rpc(op,params={},transfer=[]) {return new Promise((resolve,reject)=>{const id=++serial;const timer=setTimeout(()=>{pending.delete(id);reject(new Error('Redigeringsmotorn svarar inte'));},engineReady?60000:300000);pending.set(id,{resolve,reject,timer});worker.postMessage({id,op,...params},transfer);});}
 function status(text,error=false){$('status').textContent=text;$('status').classList.toggle('error',error);}
 const handle=fn=>async(...args)=>{try{await fn(...args);}catch(e){status(e.message,true);}};
 function bind(id,fn){$(id).onclick=handle(fn);}

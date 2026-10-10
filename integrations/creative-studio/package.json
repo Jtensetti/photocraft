@@ -14,7 +14,8 @@
     "test:pro": "node tests/pro.mjs",
     "test:native": "node tests/native-browser.mjs",
     "test:wasm": "node tests/wasm.mjs",
-    "test:graphics": "node tests/graphics-browser.mjs"
+    "test:graphics": "node tests/graphics-browser.mjs",
+    "test:engine": "node tests/engine-loader.mjs"
   },
   "dependencies": {
     "mp4-muxer": "5.2.2",

@@ -1,6 +1,6 @@
 # Creative Studio · gemensam kreativ arbetsyta
 
-En lokal, tidsmedveten bild- och videoredigerare med en arbetsyta, ett Rust-projekt och kombinerbara verktygspaneler. Originalmedia stannar i webbläsaren. Projektet använder faktiska bibliotek från PhotoCraft, LightCraft och FilmCraft, utan att ändra deras källkod.
+En lokal, tidsmedveten bild- och videoredigerare med en arbetsyta, ett Rust-projekt och kombinerbara verktygspaneler. Originalmedia stannar i webbläsaren. Projektet använder faktiska bibliotek från PhotoCraft, LightCraft, FilmCraft, VectorCraft och DesignCraft, utan att ändra deras källkod.
 
 Version 0.4 ansluter originalens kommandoregister och fullständiga bild-, framkallnings- och flerspårsrenderare till samma projekt. **Alla verktyg (Ctrl/Cmd+K)** söker bland originalens verktyg och visar deras parametrar. **Fler canvasverktyg** ger direkt åtkomst till lasso, kloning, lagning, former, lokala masker och beskärning. Funktioner som kräver desktopfiler, enheter eller separata modeller markeras som otillgängliga. Se [verifierad funktionsstatus](docs/ROADMAP.md).
 
@@ -44,6 +44,8 @@ npm run test:browser
 npm run test:workspace
 npm run test:pro
 npm run test:native
+npm run test:graphics
+npm run test:wasm
 npm run build
 npm run test:production
 ```
@@ -77,3 +79,5 @@ GitHub Actions bygger och verifierar versionen samt laddar upp `creative-studio-
 - Återlänkning jämför typ, byteantal och dimensioner; den beräknar ännu ingen filhash. Automatiska återställningspunkter finns. Återstart av en kraschad worker och fullständigt register för schemamigrering återstår.
 
 Läs [arkitekturen](docs/ARCHITECTURE.md), [projekt- och kommandokontraktet](docs/CONTRACT.md), [kodinventeringen](docs/UPSTREAM-AUDIT.md) och [licens- och varumärkesöversikten](docs/LICENSING.md).
+
+Version 0.5 lägger till VectorCraft och DesignCrafts riktiga motorer som tidsmedvetna grafiklager. De har separata verktygsrader och objekt-/ramegenskaper runt samma canvas. Välj ett grafiklager för att fortsätta redigera dess objekt; lagrets intervall och verktygets omfattning måste matcha. Grafikband kan justeras på tidslinjen. Full originalparitet återstår, särskilt filadaptrar, bibliotek, flersidig layout och specialiserade gester; se ROADMAP.

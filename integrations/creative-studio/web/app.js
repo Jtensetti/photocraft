@@ -3,6 +3,8 @@ import {icon} from './icons.js';
 import {createDevelopUI} from './develop-ui.js';
 import {createAudioMixer} from './audio-mixer.js';
 import {createNativeUI} from './native-ui.js';
+import {createToolbox} from './toolbox.js';
+import {createGraphicsUI} from './graphics-ui.js';
 import {createProUI} from './pro-ui.js';
 import {createWorkspace} from './layout.js';
 import {createFilmstrip} from './filmstrip.js';
@@ -64,7 +66,7 @@ function update(){
   $('duration').disabled=a?.kind==='video';$('duration').value=c?(c.frames/fps()).toFixed(2):1;
   $('project-details').textContent=`${p.width} × ${p.height} · ${(state.total_frames/fps()).toFixed(2)} s · ${p.clips.length} klipp`;
   for(const id of Object.keys(controls)){const n=(w.scope==='project'?p.project_look?.[id]:state.look?.[id])??0;$(id).value=n;$('value-'+id).textContent=id==='exposure'?n.toFixed(2):String(n);}
-  renderAssets();renderLayers();filmstrip?.refresh();developUI?.sync();proUI?.sync();nativeUI?.sync();
+  renderAssets();renderLayers();filmstrip?.refresh();developUI?.sync();proUI?.sync();nativeUI?.sync();graphicsUI?.sync();toolbox?.sync();
 }
 const controls={exposure:['Exponering',-5,5,.05,'light-controls'],contrast:['Kontrast',-100,100,1,'light-controls'],highlights:['Högdagrar',-100,100,1,'light-controls'],shadows:['Skuggor',-100,100,1,'light-controls'],temperature:['Temperatur',-100,100,1,'color-controls'],tint:['Nyans',-100,100,1,'color-controls'],saturation:['Mättnad',-100,100,1,'color-controls']};
 for(const [id,[label,min,max,step,parent]] of Object.entries(controls)){
@@ -125,11 +127,13 @@ async function canvasSource(){
 }
 async function nativeCommand(engine,id,params={},scope){
   if(exporting)throw new Error('Vänta tills exporten är klar');await stop();
-  if(engine==='film'){for(const a of state.project.assets)await attachSource(a);state=await rpc('native-film',{command:id,params});}
+  if(['vector','design'].includes(engine)){state=await rpc('native-graphics',{engine,command:id,params,scope:scope??editScope()});}
+  else if(engine==='film'){for(const a of state.project.assets)await attachSource(a);state=await rpc('native-film',{command:id,params});}
   else{scope??=editScope();const p=state.project,frame=p.workspace.playhead,data=await canvasSource();state=await rpc('native',{engine,command:id,params,scope,width:p.width,height:p.height,frame,pixels:data.buffer},[data.buffer]);}
   if(state.content_changed){dirty=true;$('save-status').textContent='Osparade ändringar';filmstrip?.invalidate();scheduleRecovery();}
   update();await paint();await nativeUI?.refreshLayers();return state.native_result;
 }
+let graphicsUI,toolbox;
 let nativeViewCache;
 function nativeView(){const p=state.project;if(nativeViewCache?.project===p)return nativeViewCache.promise;const promise=(async()=>{const data=await canvasSource();return rpc('native-view',{width:p.width,height:p.height,frame:p.workspace.playhead,pixels:data.buffer},[data.buffer]);})();nativeViewCache={project:p,promise};return promise;}
 async function canvasCoordinates(points,kind='photo'){const p=state.project,view=kind==='photo'?await nativeView():null;return rpc('canvas-coordinates',{kind,points:points.map(p=>p.slice(0,2)),docWidth:view?.width||p.width,docHeight:view?.height||p.height});}
@@ -215,10 +219,12 @@ function selectTool(next){
   const names={move:'Flytta',select:'Markering',brush:'Pensel',erase:'Sudd',mask:'Lagermask',text:'Text',eyedropper:'Pipett',hand:'Hand',zoom:'Zoom'};$('tool-name').textContent=names[tool]||nativeUI?.toolName(tool.slice(7))||'Verktyg';
   $('canvas').style.cursor=({move:'move',hand:'grab',zoom:'zoom-in',text:'text'})[tool]||'crosshair';
   if(tool==='text'){workspace.open('photo');document.querySelector('.text-controls').open=true;}
+  document.dispatchEvent(new CustomEvent('studio-tool-selected',{detail:next}));
 }
 function drawSelection(){if(drawing)return;const p=state?.project,r=p?.workspace.pixel_selection;if(!r){nativeUI?.drawSelection();return;}canvasCoordinates([[r[0],r[1]],[r[2],r[1]],[r[2],r[3]],[r[0],r[3]]],'canvas').then(points=>{if(state.project!==p||drawing)return;const c=$('stroke-preview');overlay.clearRect(0,0,c.width,c.height);overlay.lineWidth=1;overlay.strokeStyle='white';overlay.setLineDash([5,4]);overlay.beginPath();points.forEach((a,i)=>i?overlay.lineTo(a[0]*c.width,a[1]*c.height):overlay.moveTo(a[0]*c.width,a[1]*c.height));overlay.closePath();overlay.stroke();overlay.setLineDash([]);}).catch(e=>status(e.message,true));}
 $('canvas').onpointerdown=handle(async e=>{
   if(exporting||playing||e.button!==0)return;
+  if(tool.startsWith('graphic:')){await graphicsUI.start(tool,point(e),e);return;}
   if(tool.startsWith("native:")){await nativeUI.start(tool.slice(7),point(e),e);return;}
   if(tool==='zoom'){proUI.stepZoom(e.altKey);return;}
   if(tool==='eyedropper'){const [x,y]=point(e),c=$('canvas'),color=ctx.getImageData(Math.min(c.width-1,Math.floor(x*c.width)),Math.min(c.height-1,Math.floor(y*c.height)),1,1).data;$('color').value='#'+[...color].slice(0,3).map(n=>n.toString(16).padStart(2,'0')).join('');status('Färg hämtad från canvasen');return;}
@@ -231,6 +237,8 @@ $('canvas').onpointerdown=handle(async e=>{
   if(tool==='mask'&&!state.project.workspace.selected_layer)throw new Error('Välj ett lager för att maskera.');
   drawingScope=tool==='select'?null:editScope();drawing=true;points=[point(e)];$('canvas').setPointerCapture(e.pointerId);drawOverlay();
 });
+$('canvas').addEventListener('pointermove',e=>{if(tool.startsWith('graphic:'))graphicsUI.move(point(e));});
+$('canvas').addEventListener('pointerup',handle(async()=>{if(tool.startsWith('graphic:'))await graphicsUI.end();}));
 $('canvas').onpointermove=e=>{
   if(tool.startsWith('native:')){nativeUI.move(point(e),e);return;}
   if(canvasGesture?.tool==='hand'){const g=canvasGesture;$('stage').scrollLeft=g.left+g.x-e.clientX;$('stage').scrollTop=g.top+g.y-e.clientY;return;}
@@ -249,7 +257,7 @@ $('canvas').onpointerup=handle(async()=>{
   if(state.project.workspace.native_target||state.project.workspace.photo_tools||state.project.workspace.photo_selection?.length||nativeUI?.paintTarget()==='mask'){await nativeCommand('photo','paint.stroke',{points:(await canvasCoordinates(points)).map((p,i)=>[...p,points[i][2]]),color:$('color').value,size:Number($('brush-size').value),hardness:Number($('brush-hardness').value)/100,opacity:Number($('brush-opacity').value)/100,flow:Number($('brush-flow').value)/100,erase:tool==='erase',target:nativeUI?.paintTarget()||'pixels'},drawingScope);overlay.clearRect(0,0,$('stroke-preview').width,$('stroke-preview').height);drawSelection();return;}
   const color=$('color').value.match(/\w\w/g).map(h=>parseInt(h,16)/255),mapped=await canvasCoordinates(points,'source');const stroke={points:mapped.map((p,i)=>[...p.map(n=>Math.max(0,Math.min(1,n))),points[i][2]]),color:[...color,1],size:Math.max(.0001,Math.min(.5,Number($('brush-size').value)/state.project.width)),erase:tool==='erase',hardness:Number($('brush-hardness').value)/100,opacity:Number($('brush-opacity').value)/100,flow:Number($('brush-flow').value)/100,pressure_size:$('brush-pressure').checked,selection:state.project.workspace.pixel_selection};overlay.clearRect(0,0,$('stroke-preview').width,$('stroke-preview').height);await command('layer.stroke',{stroke,scope:drawingScope});drawSelection();status('Penseldraget sparat i valt intervall');
 });
-$('canvas').onpointercancel=()=>{drawing=false;canvasGesture=null;points=[];overlay.clearRect(0,0,$('stroke-preview').width,$('stroke-preview').height);drawSelection();};
+$('canvas').onpointercancel=()=>{graphicsUI?.cancel();nativeUI?.cancel();drawing=false;canvasGesture=null;points=[];overlay.clearRect(0,0,$('stroke-preview').width,$('stroke-preview').height);drawSelection();};
 document.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>selectTool(b.dataset.tool));
 document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=handle(async()=>{workspace.open(b.dataset.mode);await command('view.set',{mode:b.dataset.mode,left_visible:true,right_visible:true},false);}));
 $('scope').onchange=handle(()=>command('view.set',{scope:$('scope').value},false));
@@ -301,7 +309,7 @@ $('layer-name').onchange=handle(()=>command('layer.set',{id:state.project.worksp
 for(const id of ['layer-scale','layer-rotation'])$(id).onchange=handle(()=>command('layer.set',{id:state.project.workspace.selected_layer,scale:Number($('layer-scale').value)/100,rotation:Number($('layer-rotation').value)}));
 bind('layer-duplicate',()=>command('layer.duplicate',{id:state.project.workspace.selected_layer}));
 for(const [id,delta] of [['layer-up',1],['layer-down',-1]])bind(id,()=>{const layers=state.project.layers,index=layers.findIndex(l=>l.id===state.project.workspace.selected_layer);return command('layer.move',{id:state.project.workspace.selected_layer,index:Math.max(0,Math.min(layers.length-1,index+delta))});});
-bind('selection-clear',async()=>{await command('view.set',{pixel_selection:null},false);overlay.clearRect(0,0,$('stroke-preview').width,$('stroke-preview').height);});
+bind('selection-clear',async()=>{if(state.project.workspace.photo_selection?.length)await nativeCommand('photo','select.deselect',{});await command('view.set',{pixel_selection:null},false);overlay.clearRect(0,0,$('stroke-preview').width,$('stroke-preview').height);});
 bind('reset-look',()=>command('develop.reset',{scope:editScope()}));
 bind('export',async()=>{await stop();$('export-description').textContent=`${state.project.width} × ${state.project.height} · ${fps().toFixed(3)} fps`;$('export-dialog').showModal();});bind('export-close',()=>$('export-dialog').close());
 bind('export-image',async()=>{const p=state.project;const pixels=await framePixels(p.workspace.playhead,p.width,p.height);const c=document.createElement('canvas');c.width=p.width;c.height=p.height;c.getContext('2d').putImageData(new ImageData(pixels,p.width,p.height),0,0);download(await new Promise(r=>c.toBlob(r,'image/png')),safeName()+'.png');status('PNG exporterad');});
@@ -329,7 +337,7 @@ window.addEventListener('keydown',handle(async e=>{
   if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)||document.querySelector('dialog[open]'))return;
   if(e.ctrlKey||e.metaKey){if(e.key.toLowerCase()==='n'){e.preventDefault();$('new').click();}else if(e.key.toLowerCase()==='o'){e.preventDefault();$('open').click();}else if(e.key.toLowerCase()==='j'){e.preventDefault();$('layer-duplicate').click();}else if(e.key.toLowerCase()==='d'){e.preventDefault();$('selection-clear').click();}else if(e.key.toLowerCase()==='s'){e.preventDefault();await save();}else if(e.key.toLowerCase()==='z'){e.preventDefault();await command(e.shiftKey?'redo':'undo');}return;}
   if(e.altKey&&e.key.toLowerCase()==='i'){e.preventDefault();selectTool('eyedropper');return;}
-  const hotkeys={v:'move',m:'select',b:'brush',e:'erase',t:'text',h:'hand',z:'zoom'};if(hotkeys[e.key.toLowerCase()]){e.preventDefault();selectTool(hotkeys[e.key.toLowerCase()]);return;}if(e.key==='Tab'){e.preventDefault();$('focus').click();return;}if(e.key.toLowerCase()==='c'){e.preventDefault();$('split').click();return;}
+  const hotkeys={v:'move',m:'select',b:'brush',e:'erase',t:'text',h:'hand',z:'zoom'};if(!e.shiftKey&&state.project.workspace.mode==='photo'&&hotkeys[e.key.toLowerCase()]){e.preventDefault();selectTool(hotkeys[e.key.toLowerCase()]);return;}if(e.key==='Tab'){e.preventDefault();$('focus').click();return;}if(e.key.toLowerCase()==='c'){e.preventDefault();$('split').click();return;}
   if(e.code==='Space'){e.preventDefault();await play();}else if(e.key==='ArrowRight')$('next').click();else if(e.key==='ArrowLeft')$('prev').click();else if(e.key.toLowerCase()==='i')$('set-in').click();else if(e.key.toLowerCase()==='o')$('set-out').click();
 }));
 workspace=createWorkspace({status,getPresentation:()=>{const {timeline_visible,left_visible,right_visible,timeline_height}=state.project.workspace;return {timeline_visible,left_visible,right_visible,timeline_height};},applyPresentation:params=>command('view.set',params,false)});
@@ -338,5 +346,7 @@ developUI=createDevelopUI({getState:()=>state,command,editScope,status});
 proUI=createProUI({getState:()=>state,command,selectTool,status,updateOverlay:positionOverlay});
 audioMixer=createAudioMixer({rpc,attachSource,getState:()=>state});
 nativeUI=createNativeUI({getState:()=>state,nativeCommand,nativeView,canvasCoordinates,rpc,command,selectTool,status,editScope,isPlaying:()=>playing||exporting,overlay,canvas:$('canvas')});
-window.creativeStudio={canvasCoordinates,audioMixer,nativeUI,nativeCommand,nativeView,selectTool,developUI,proUI,workspace,filmstrip,execute:command,inspect:()=>structuredClone(state),save:()=>rpc('save'),open:openJson,importFile,framePixels,exportVideo};
+graphicsUI=createGraphicsUI({getState:()=>state,nativeCommand,rpc,command,selectTool,editScope,canvasCoordinates,status,canvas:$('canvas'),overlay,openTools:(engine,q)=>nativeUI.open(engine,q)});
+toolbox=createToolbox({selectTool,getState:()=>state,workspace,status});
+window.creativeStudio={graphicsUI,toolbox,canvasCoordinates,audioMixer,nativeUI,nativeCommand,nativeView,selectTool,developUI,proUI,workspace,filmstrip,execute:command,inspect:()=>structuredClone(state),save:()=>rpc('save'),open:openJson,importFile,framePixels,exportVideo};
 handle(async()=>{state=await rpc('inspect');const legacy=localStorage.getItem('creative-studio-layout'),l=workspace.inspect().presentation||(legacy?JSON.parse(legacy):null);if(l){state=await rpc('command',{command:'view.set',params:{timeline_visible:l.timeline_visible,left_visible:l.left_visible,right_visible:l.right_visible,timeline_height:l.timeline_height}});}if(matchMedia('(max-width:780px)').matches)state=await rpc('command',{command:'view.set',params:{left_visible:false,right_visible:false}});update();const list=await projects();recovery=list.filter(p=>p.recovery&&!list.some(saved=>saved.id===p.original_id&&saved.modified>=p.modified)).sort((a,b)=>b.modified-a.modified)[0];$('recover').hidden=!recovery;status('Redo · importera media eller skapa en bild');})();

@@ -10,6 +10,7 @@
 mod coordinates;
 mod encode;
 mod film;
+mod graphics;
 pub mod model;
 mod native;
 mod render;
@@ -272,7 +273,38 @@ impl Studio {
         film::render_clip(&self.project, clip, width, height, frame, inputs, pixels)
     }
     pub fn native_catalog(&self) -> Result<String, String> {
-        serde_json::to_string(&native::catalog()).map_err(|e| e.to_string())
+        let mut catalog = native::catalog();
+        catalog["vector"] = graphics::catalog("vector");
+        catalog["design"] = graphics::catalog("design");
+        serde_json::to_string(&catalog).map_err(|e| e.to_string())
+    }
+    pub fn execute_graphics(
+        &mut self,
+        engine: &str,
+        command: &str,
+        params: &str,
+    ) -> Result<String, String> {
+        if params.len() > 2_000_000 {
+            return Err("Kommandot är för stort".into());
+        }
+        let v: Value = serde_json::from_str(params).map_err(|e| e.to_string())?;
+        let mut p = self.project.clone();
+        let scope = target_scope(&p, &v)?;
+        let (result, content) = graphics::execute(
+            &mut p,
+            engine,
+            command,
+            v.get("params").cloned().unwrap_or_else(|| json!({})),
+            scope,
+        )?;
+        self.commit_project(p, content)?;
+        let mut out: Value = serde_json::from_str(&self.inspect()?).map_err(|e| e.to_string())?;
+        out["native_result"] = result;
+        out["content_changed"] = json!(content);
+        serde_json::to_string(&out).map_err(|e| e.to_string())
+    }
+    pub fn graphics_view(&self, engine: &str) -> Result<String, String> {
+        serde_json::to_string(&graphics::view(&self.project, engine)?).map_err(|e| e.to_string())
     }
     pub fn native_view(
         &self,
@@ -487,6 +519,10 @@ impl Studio {
                     p.workspace.native_target =
                         serde_json::from_value(n.clone()).map_err(|e| e.to_string())?;
                 }
+                if let Some(n) = v.get("graphic_target") {
+                    p.workspace.graphic_target =
+                        serde_json::from_value(n.clone()).map_err(|e| e.to_string())?;
+                }
                 if let Some(id) = v["selected_layer"].as_str() {
                     p.workspace.native_target = None;
                     p.workspace.selected_layer = Some(id.into());
@@ -678,6 +714,35 @@ impl Studio {
                 let layer = p.layers.remove(old);
                 p.layers.insert(index, layer);
             }
+            "graphic.scope" => {
+                let id = string(v, "id")?;
+                let start = integer(v, "start")?;
+                let end = integer(v, "end")?;
+                let layer = p
+                    .graphic_layers
+                    .iter_mut()
+                    .find(|l| l.id == id)
+                    .ok_or("Grafiklagret saknas")?;
+                if start >= end {
+                    return Err("Grafiklagret måste omfatta minst en bildruta".into());
+                }
+                if p.photo_operations
+                    .iter()
+                    .any(|o| o.target == id && (o.scope.start < start || o.scope.end > end))
+                {
+                    return Err("Grafiklagret måste fortsatt täcka dess bildredigeringar".into());
+                }
+                layer.scope.start = start;
+                layer.scope.end = end;
+            }
+            "graphic.delete" => {
+                let id = string(v, "id")?;
+                p.graphic_layers.retain(|l| l.id != id);
+                native::remove_target(&mut p, id);
+                if p.workspace.graphic_target.as_deref() == Some(id) {
+                    p.workspace.graphic_target = None;
+                }
+            }
             "layer.delete" => {
                 let id = string(v, "id")?;
                 p.layers.retain(|l| l.id != id);
@@ -758,12 +823,16 @@ impl Studio {
                 p.photo_operations.retain(|l| {
                     l.scope.clip_id != id || l.scope.start < end && l.scope.end > start
                 });
+                p.graphic_layers.retain(|l| {
+                    l.scope.clip_id != id || l.scope.start < end && l.scope.end > start
+                });
                 for scope in p
                     .layers
                     .iter_mut()
                     .map(|l| &mut l.scope)
                     .chain(p.adjustments.iter_mut().map(|l| &mut l.scope))
                     .chain(p.photo_operations.iter_mut().map(|l| &mut l.scope))
+                    .chain(p.graphic_layers.iter_mut().map(|l| &mut l.scope))
                 {
                     if scope.clip_id == id {
                         scope.start = scope.start.max(start) - start;
@@ -823,12 +892,15 @@ impl Studio {
                     .retain(|l| l.scope.clip_id != id || l.scope.start < frames);
                 p.photo_operations
                     .retain(|l| l.scope.clip_id != id || l.scope.start < frames);
+                p.graphic_layers
+                    .retain(|l| l.scope.clip_id != id || l.scope.start < frames);
                 for s in p
                     .layers
                     .iter_mut()
                     .map(|l| &mut l.scope)
                     .chain(p.adjustments.iter_mut().map(|l| &mut l.scope))
                     .chain(p.photo_operations.iter_mut().map(|l| &mut l.scope))
+                    .chain(p.graphic_layers.iter_mut().map(|l| &mut l.scope))
                 {
                     if s.clip_id == id {
                         s.end = s.end.min(frames);
@@ -856,6 +928,18 @@ impl Studio {
             p.timeline = Some(film::empty_sequence(p.width, p.height, p.fps));
         } else if cmd == "asset.add" || cmd.starts_with("clip.") && cmd != "clip.split" {
             film::sync_timeline(&mut p, cmd)?;
+        }
+        for l in &self.project.graphic_layers {
+            if !p.graphic_layers.iter().any(|g| g.id == l.id) {
+                native::remove_target(&mut p, &l.id);
+            }
+        }
+        if p.workspace
+            .graphic_target
+            .as_ref()
+            .is_some_and(|id| !p.graphic_layers.iter().any(|l| &l.id == id))
+        {
+            p.workspace.graphic_target = None;
         }
         p.validate()?;
         if content && project_bytes(&p)? > PROJECT_BYTE_LIMIT {

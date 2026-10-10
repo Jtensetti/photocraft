@@ -42,6 +42,12 @@ filmcraft-export = { git = "https://github.com/Jtensetti/filmcraft", rev = "5231
 filmcraft-h264enc = { git = "https://github.com/Jtensetti/filmcraft", rev = "5231852443363f001c3f6b396dd9b1e6461ae2be" }
 
 symphonia = { version = "0.5.5", default-features = false, features = ["mp3", "flac", "pcm", "wav", "aiff"] }
+vectorcraft-engine = { git = "https://github.com/Jtensetti/vectorcraft", rev = "da73a4613715a8e757f9c60d8d87265eebbb6a8b" }
+vectorcraft-render = { git = "https://github.com/Jtensetti/vectorcraft", rev = "da73a4613715a8e757f9c60d8d87265eebbb6a8b" }
+vectorcraft-geom = { git = "https://github.com/Jtensetti/vectorcraft", rev = "da73a4613715a8e757f9c60d8d87265eebbb6a8b" }
+designcraft-engine = { git = "https://github.com/Jtensetti/designcraft", rev = "9e4f69428f05db49fde3f695aa2431178e32ce5f" }
+designcraft-render = { git = "https://github.com/Jtensetti/designcraft", rev = "9e4f69428f05db49fde3f695aa2431178e32ce5f" }
+designcraft-geom = { git = "https://github.com/Jtensetti/designcraft", rev = "9e4f69428f05db49fde3f695aa2431178e32ce5f" }
 
 [profile.release]
 opt-level = 3

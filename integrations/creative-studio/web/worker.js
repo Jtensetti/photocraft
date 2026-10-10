@@ -27,6 +27,8 @@ self.onmessage = async ({data: m}) => {
     else if (m.op === 'save') result = studio.save();
     else if (m.op === 'open') result = JSON.parse(studio.open(m.text));
     else if(m.op === 'catalog') result=JSON.parse(studio.native_catalog());
+    else if(m.op === 'native-graphics') result=JSON.parse(studio.execute_graphics(m.engine,m.command,JSON.stringify({params:m.params,scope:m.scope})));
+    else if(m.op === 'graphics-view') result=JSON.parse(studio.graphics_view(m.engine));
     else if(m.op === 'native-film') result=JSON.parse(studio.execute_film(m.command,JSON.stringify(m.params)));
     else if(m.op === 'audio-plan') result=JSON.parse(studio.audio_plan(BigInt(m.start),m.frames));
     else if(m.op === 'mix-audio'){result=studio.mix_audio(BigInt(m.start),m.frames,JSON.stringify(m.inputs),new Float32Array(m.samples));self.postMessage({id:m.id,result:result.buffer},[result.buffer]);return;}

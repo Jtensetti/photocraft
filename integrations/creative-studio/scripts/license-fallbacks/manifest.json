@@ -174,5 +174,29 @@
     "git_sha": "fa2c767a01d7d9373911d0bf63e0588553d67e0e",
     "file": "zune-jpeg-LICENSE",
     "source_url": "https://github.com/etemesi254/zune-image/blob/fa2c767a01d7d9373911d0bf63e0588553d67e0e/LICENSE-ZLIB"
+  },
+  {
+    "name": "krilla",
+    "version": "0.8.2",
+    "license": "MIT OR Apache-2.0",
+    "git_sha": "3ffdf0588cf98050aad6edba51ca70162e1fb5b5",
+    "file": "krilla-LICENSE-MIT",
+    "source_url": "https://github.com/LaurenzV/krilla/blob/3ffdf0588cf98050aad6edba51ca70162e1fb5b5/LICENSE_MIT"
+  },
+  {
+    "name": "krilla-svg",
+    "version": "0.8.1",
+    "license": "MIT OR Apache-2.0",
+    "git_sha": "3ffdf0588cf98050aad6edba51ca70162e1fb5b5",
+    "file": "krilla-LICENSE-MIT",
+    "source_url": "https://github.com/LaurenzV/krilla/blob/3ffdf0588cf98050aad6edba51ca70162e1fb5b5/LICENSE_MIT"
+  },
+  {
+    "name": "qrcodegen",
+    "version": "1.8.0",
+    "license": "MIT",
+    "git_sha": "720f62bddb7226106071d4728c292cb1df519ceb",
+    "file": "qrcodegen-LICENSE",
+    "source_url": "https://github.com/nayuki/QR-Code-generator/blob/720f62bddb7226106071d4728c292cb1df519ceb/rust/src/lib.rs"
   }
 ]

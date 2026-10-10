@@ -38,3 +38,9 @@ WAV läses i sampleintervall; MP3/FLAC/AIFF använder Symphonia med en range-ada
 Videoexport samplar varje projektruta med rationella tidsstämplar. WebM använder VP9/Opus. MP4 använder browserns H.264 när tillgängligt och annars FilmCrafts egen strömmande H.264-kodare, med AAC eller Opus-ljud. Kodarköer och filskrivningar dräneras under arbetet. Nedladdning i minnet begränsas till två minuter; sökbar direktlagring stöder längre export och avbrott. Exportkodaren är en tillfällig resurs utan projektmodell.
 
 8-bitars sRGB är fortfarande in/ut-kontraktet för den gemensamma canvasen. CPU-preview garanterar inte att varje ruta hinner visas under uppspelning. Export renderar varje ruta. HDR/ICC/16-bitars trohet och lång högupplöst export behöver fortsatt arbete.
+
+## Fem arbetsytor, en modell
+
+`Project.graphic_layers` lagrar VectorCraft-/DesignCraft-kommandon och ett klippbundet `[start, end)`-intervall. Originalmotorn härleder ett redigerbart dokument genom journalåterspelning; dess CPU-renderare skapar ett transparent lager i samma PhotoCraft-komposition. LightCraft framkallar sedan den gemensamma bildrutan och FilmCraft renderar sekvensen. Ingen VectorCraft-/DesignCraft-session eller separat undo-stack sparas. Grafikrastrar cachas med exakta journalnycklar i högst 32 MB, aldrig per videobildruta.
+
+Grafikens tidsomfattning måste matcha verktygets val för objektredigering. Trimning, duration och native razor ommappar scopes och PhotoCraft-alias; grafikband på tidslinjen kan ändra intervallet explicit. Fem lägen väljer egna verktygsrader och dockflikar. Layoutmigration behåller tidigare fyra-panel-konfigurationer och kompletterar med de nya panelerna.

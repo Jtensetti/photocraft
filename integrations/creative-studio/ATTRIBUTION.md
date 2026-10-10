@@ -17,3 +17,5 @@ The generated public/licenses/dependencies.json contains the locked Rust depende
 manifest and associated license texts. Upstream branding assets are excluded; the separately licensed Lucide tool icons are included with their ISC notice.
 
 PhotoCraft text uses bundled Inter and JetBrains Mono font data under SIL OFL. Full font notices are collected under public/licenses/rust/photocraft-text-0.5.0 by the build script. The three native engines are derived command/render views of one Studio project at the pinned revisions.
+
+VectorCraft (`da73a4613715a8e757f9c60d8d87265eebbb6a8b`) och DesignCraft (`9e4f69428f05db49fde3f695aa2431178e32ce5f`) används som oförändrade låsta Rust-motorer. Deras LICENSE/NOTICE och bundlade typsnittslicenser följer med under `licenses/`. De nya verktygsikonerna återanvänder samma Lucide/ISC-uppsättning i PhotoCrafts `assets/icons/`; inga appmärken eller upstream-skärmbilder distribueras.

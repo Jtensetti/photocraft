@@ -543,6 +543,10 @@ pub fn photo(
             .iter()
             .find(|l| l.id == *target)
             .is_some_and(|l| !covers(&l.scope))
+            || p.graphic_layers
+                .iter()
+                .find(|l| l.id == *target)
+                .is_some_and(|l| !covers(&l.scope))
             || p.photo_operations
                 .iter()
                 .any(|o| target.starts_with(&format!("{}:", o.id)))

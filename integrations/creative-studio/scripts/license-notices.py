@@ -56,7 +56,7 @@ for package in sorted(metadata["packages"], key=lambda p: (p["name"], p["version
         shutil.copyfile(fallback_root / fallback['file'], destination)
         (destination.parent / 'SOURCE.txt').write_text(fallback['source_url'] + '\n')
         licenses.append(f'rust/{name}/{destination.name}')
-    if package['name'] == 'photocraft-text':
+    if package['name'] in ('photocraft-text','vectorcraft-fonts','designcraft-fonts'):
         fonts = Path(package['manifest_path']).parent.parent.parent / 'assets/fonts'
         for source in fonts.rglob('*'):
             if source.is_file() and source.name.upper().startswith(('LICENSE', 'OFL')):

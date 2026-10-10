@@ -662,6 +662,25 @@ fn remap_scopes(p: &mut SharedProject, old: &[crate::model::Clip]) -> Result<(),
         })
         .collect();
     let old_layers = p.layers.clone();
+    let old_graphics = p.graphic_layers.clone();
+    p.graphic_layers = p
+        .graphic_layers
+        .iter()
+        .flat_map(|l| {
+            remap(&l.scope).into_iter().map(|scope| {
+                let id = if scope.clip_id == l.scope.clip_id {
+                    l.id.clone()
+                } else {
+                    format!("{}-{}", l.id, scope.clip_id)
+                };
+                crate::model::GraphicLayer {
+                    id,
+                    scope,
+                    ..l.clone()
+                }
+            })
+        })
+        .collect();
     p.photo_operations = p
         .photo_operations
         .iter()
@@ -676,6 +695,12 @@ fn remap_scopes(p: &mut SharedProject, old: &[crate::model::Clip]) -> Result<(),
                         .iter()
                         .filter(|l| l.scope.clip_id == e.scope.clip_id)
                         .map(|l| (l.id.clone(), format!("{}-{}", l.id, scope.clip_id)))
+                        .chain(
+                            old_graphics
+                                .iter()
+                                .filter(|l| l.scope.clip_id == e.scope.clip_id)
+                                .map(|l| (l.id.clone(), format!("{}-{}", l.id, scope.clip_id))),
+                        )
                         .collect();
                     if let Some(id) = aliases.get(&op.target) {
                         op.target = id.clone();
@@ -730,6 +755,13 @@ fn remap_scopes(p: &mut SharedProject, old: &[crate::model::Clip]) -> Result<(),
         .is_some_and(|id| !p.layers.iter().any(|l| &l.id == id))
     {
         p.workspace.selected_layer = None;
+    }
+    if p.workspace
+        .graphic_target
+        .as_ref()
+        .is_some_and(|id| !p.graphic_layers.iter().any(|l| &l.id == id))
+    {
+        p.workspace.graphic_target = None;
     }
     Ok(())
 }

@@ -1,0 +1,24 @@
+import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import assert from 'node:assert/strict';
+import init,{Studio} from '../public/pkg/creative_studio.js';
+const manifest=JSON.parse(readFileSync('public/pkg/engine.json','utf8'));
+const chunks=manifest.chunks.map(c=>{const bytes=readFileSync('public/pkg/'+c.name);assert.equal(createHash('sha256').update(bytes).digest('hex'),c.sha256);return bytes;});
+await init({module_or_path:Buffer.concat(chunks)});
+const s=new Studio(),cmd=(id,p={})=>JSON.parse(s.execute(id,JSON.stringify(p))),view=()=>JSON.parse(s.inspect());
+cmd('project.new',{width:64,height:48});cmd('asset.add',{asset:{id:'a',name:'Shared canvas',kind:'image',width:64,height:48,bytes:0,source_fps:null},frames:20});
+cmd('selection.set',{clip_id:'clip-1',start:3,end:10});cmd('view.set',{scope:'range',playhead:5});
+const raw=new Uint8Array(64*48*4).fill(255),render=f=>Array.from(s.render(64,48,f,raw));
+const original=render(5),scope={clip_id:'clip-1',start:3,end:10};
+const graphic=(engine,id,params)=>JSON.parse(s.execute_graphics(engine,id,JSON.stringify({params,scope})));
+graphic('vector','paint.setFill',{color:'#ff0000'});graphic('vector','shape.rectangle',{x:4,y:4,width:20,height:20});
+const vector=render(5);assert.notDeepEqual(vector,original);assert.deepEqual(render(10),original);assert.ok(vector[(8*64+8)*4+1]<20);
+cmd('view.set',{graphic_target:null});graphic('design','frame.create',{rect:[34,4,54,24],shape:'rectangle',content:'unassigned'});
+const designView=JSON.parse(s.graphics_view('design')),id=designView.spreads[0].items[0].id;
+graphic('design','selection.set',{ids:[id]});graphic('design','object.fill',{swatch:'[Black]'});
+const both=render(5);assert.ok(both[(8*64+40)*4]<20);assert.ok(both[(8*64+8)*4+1]<20);assert.deepEqual(render(10),original);
+for(const mode of ['photo','light','film','vector','design']){const before=view();cmd('view.set',{mode});assert.deepEqual(view().project.workspace.selection,before.project.workspace.selection);assert.equal(view().project.workspace.playhead,5);assert.deepEqual(render(5),both);}
+const saved=s.save(),reopened=new Studio();reopened.open(saved);assert.deepEqual(Array.from(reopened.render(64,48,5,raw)),both);
+cmd('undo');assert.deepEqual(render(5),vector);cmd('redo');assert.deepEqual(render(5),both);
+const catalog=JSON.parse(s.native_catalog());for(const engine of ['photo','light','film','vector','design'])assert.ok(catalog[engine].length>100);
+console.log(JSON.stringify({result:'PASS',engines:Object.fromEntries(['photo','light','film','vector','design'].map(e=>[e,catalog[e].length])),shared_pixels:true,scope:true,save:true,undo:true,validated_chunks:chunks.length}));

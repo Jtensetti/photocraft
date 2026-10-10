@@ -63,6 +63,23 @@ pub fn document(
     }
     let source = doc.layers.first().ok_or("Originalet saknar lager")?.id;
     aliases.insert("source".into(), source);
+    for graphic in p
+        .graphic_layers
+        .iter()
+        .filter(|l| l.scope.contains(&clip.id, local))
+    {
+        let pixels = crate::graphics::pixels(p, graphic, w, h)?;
+        let layer = Layer::new(
+            if graphic.engine == "vector" {
+                "VectorCraft"
+            } else {
+                "DesignCraft"
+            },
+            LayerContent::Raster(Surface::from_interleaved(PixelFormat::RGBA8, rect, &pixels)),
+        );
+        aliases.insert(graphic.id.clone(), layer.id);
+        doc.layers.push(layer);
+    }
     for l in p
         .layers
         .iter()

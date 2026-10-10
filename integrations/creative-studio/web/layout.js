@@ -1,12 +1,12 @@
 // Presentation only. Panel placement is never a project operation or undo entry.
 const KEY='creative-studio-workspaces-v2';
-const names={media:'Projektmedia',light:'LightCraft',photo:'PhotoCraft',film:'FilmCraft'};
-const defaults=()=>({panels:{media:{dock:'left',open:true},photo:{dock:'right',open:true},light:{dock:'right',open:false},film:{dock:'right',open:false}},tabs:{left:false,right:false},active:{left:'media',right:'photo'},widths:{left:218,right:310}});
+const names={media:'Projektmedia',light:'LightCraft',photo:'PhotoCraft',film:'FilmCraft',vector:'VectorCraft',design:'DesignCraft'};
+const defaults=()=>({panels:{media:{dock:'left',open:true},photo:{dock:'right',open:true},light:{dock:'right',open:false},film:{dock:'right',open:false},vector:{dock:'right',open:false},design:{dock:'right',open:false}},tabs:{left:false,right:true},active:{left:'media',right:'photo'},widths:{left:218,right:310}});
 export function createWorkspace({status,getPresentation,applyPresentation}){
   const left=document.getElementById('left-panel'),right=document.getElementById('right-panel');
   const saved=()=>{try{return JSON.parse(localStorage.getItem(KEY))||{layouts:{}};}catch{return {layouts:{}};}};
   let view=defaults(),lastMode='photo';
-  const nodes={media:document.getElementById('media-panel'),photo:document.getElementById('photo-panel'),light:document.getElementById('light-panel'),film:document.getElementById('film-panel')};
+  const nodes={media:document.getElementById('media-panel'),photo:document.getElementById('photo-panel'),light:document.getElementById('light-panel'),film:document.getElementById('film-panel'),vector:document.getElementById('vector-panel'),design:document.getElementById('design-panel')};
   const cards={};
   for(const [id,node] of Object.entries(nodes)){
     const card=document.createElement('section');card.className='dock-card';card.dataset.panel=id;
@@ -24,8 +24,8 @@ export function createWorkspace({status,getPresentation,applyPresentation}){
   }
   function persist(){const data=saved();data.current=view;try{localStorage.setItem(KEY,JSON.stringify(data));}catch{status('Layouten kunde inte sparas på enheten',true);}}
   function move(id,dock){view.panels[id].dock=dock;view.panels[id].open=true;view.active[dock]=id;render();}
-  function valid(v){return v?.panels&&Object.keys(names).every(id=>v.panels[id]&&['left','right','float'].includes(v.panels[id].dock));}
-  const previous=saved().current;if(valid(previous))view=previous;
+  function valid(v){return v?.panels&&['media','photo','light','film'].every(id=>v.panels[id]&&['left','right','float'].includes(v.panels[id].dock));}
+  const previous=saved().current;if(valid(previous)){view={...defaults(),...previous,panels:{...defaults().panels,...previous.panels}};if(!previous.panels.vector&&!previous.panels.design)view.tabs={...view.tabs,right:true};}
   for(const [dock,root] of [['left',left],['right',right]]){
     root.replaceChildren();const header=document.createElement('div');header.className='dock-bar';
     const add=document.createElement('select');add.setAttribute('aria-label',`Öppna verktyg på ${dock==='left'?'vänster':'höger'} sida`);add.add(new Option('+ Verktyg',''));
@@ -63,7 +63,7 @@ export function createWorkspace({status,getPresentation,applyPresentation}){
   window.addEventListener('resize',()=>render());
   const select=document.getElementById('layout-list');
   function refresh(){select.replaceChildren(new Option('Mina arbetsytor',''));for(const name of Object.keys(saved().layouts||{}))select.add(new Option(name,name));}
-  refresh();select.onchange=()=>{const l=saved().layouts?.[select.value];if(valid(l)){view=structuredClone(l);render();if(view.presentation)applyPresentation(view.presentation).catch(error=>status(error.message,true));status('Arbetsytan är återställd');}};
+  refresh();select.onchange=()=>{const l=saved().layouts?.[select.value];if(valid(l)){view={...defaults(),...structuredClone(l),panels:{...defaults().panels,...structuredClone(l.panels)}};render();if(view.presentation)applyPresentation(view.presentation).catch(error=>status(error.message,true));status('Arbetsytan är återställd');}};
   return {
     sync(mode){if(mode!==lastMode){this.open(mode);lastMode=mode;}const presentation=getPresentation();if(JSON.stringify(view.presentation)!==JSON.stringify(presentation)){view.presentation=presentation;persist();}},
     open(id){view.panels[id].open=true;view.panels[id].min=false;if(view.panels[id].dock!=='float')view.active[view.panels[id].dock]=id;render();},

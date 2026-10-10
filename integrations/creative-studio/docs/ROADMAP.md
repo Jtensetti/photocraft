@@ -1,12 +1,15 @@
 # Verifierad funktion och kvarvarande gränser
 
-## Version 0.4
+## Version 0.5
 
 | Område | Implementerat |
 |---|---|
 | Gemensamt projekt | En Rust Studio, auktoritativ FilmCraft-sekvens, tidsmedvetna operationer, canvas och gemensam historik |
 | Filmrulle | Verkliga tidsminiatyrer, zoom till bildrutor, klick, Shift-intervall, dragmarkering, I/O och klipp-/lagerband |
 | Arbetsyta | Flyttbara paneler, dockor, flikar/stapling, frikoppling, minimering, dimensioner och namngivna layouter |
+| Fem gränssnitt | Egen verktygsrad för Photo/Light/Film/Vector/Design, flyouts för retusch/markering/paint, aktiv dockflik med möjlighet att kombinera paneler |
+| VectorCraft | Originalmotor och renderare, former/banor/text, objektval, fyllning/linjer/opacitet, transformation, gruppering och duplikat på tidsmedvetna grafiklager |
+| DesignCraft | Originalmotor, typsättning och renderare, ramar/text/linjer, objektval, fyllning, transformation och textramar med kolumner/gutter/inset |
 | Verktyg | Originalens verkliga kommandoregister, sökning/kategorier/parameterformulär och tydliga plattformsbegränsningar |
 | PhotoCraft | Native dokument/lager, filter, lasso/trollstav, retusch, kloning/lagning, gradient/fill, former/vektorer, masker, fria transformationer, stilar, kanaler, urklipp och penselförinställningar |
 | LightCraft | Full pipeline, kurvor/HSL/gradering/detalj, lokala masker med alla justeringar, brush/linear/radial, spot removal, beskärning/geometri, auto och förinställningar |
@@ -30,5 +33,7 @@ Rust-tester kontrollerar faktiska pixlar, scope, masker, urklipp, kurvor, transf
 - Lång export är verifierad vid liten upplösning. En halvtimmes 4K-export och stora lagerprojekt behöver separat minnes-/prestandaprofil. Originalavkodare, originalens cache och codec-index har egna kostnader.
 - Native operationer måste kunna spelas upp på sitt mål; vissa verktyg för externa presets, flera dokument eller separata bibliotek behöver en ytterligare browseradapter. Full desktopparitet är inte färdig.
 - Media är lokal per origin. Portabel backup behövs för flytt mellan domäner/enheter. Filhash vid relink, automatisk återstart av en kraschad worker och ett fullständigt migrationsregister återstår.
+
+- VectorCraft och DesignCraft är nya integrationer. Särskilda fil-/biblioteksadaptrar, alla interaktiva originalverktyg och DesignCrafts flersidespresentation är ännu inte färdiga. Parametriska originalkommandon finns i verktygssökningen med JSON-komplettering; detta motsvarar inte full dialog- eller gestparitet.
 
 Nästa arbete är därför browseranpassning och UX för de återstående originalfunktionerna, färgtrohet och storprojektsprofilering. Den gemensamma modellen och originalmotorerna ska fortsatt vara grunden.

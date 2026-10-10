@@ -11,7 +11,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     defaults:
       run:
         working-directory: integrations/creative-studio
@@ -43,6 +43,8 @@ jobs:
       - run: npm run test:workspace
       - run: npm run test:pro
       - run: npm run test:native
+      - run: npm run test:graphics
+      - run: npm run test:wasm
       - run: npm run build
       - run: npm run test:production
       - uses: actions/upload-artifact@v4

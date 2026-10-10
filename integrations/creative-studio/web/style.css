@@ -24,6 +24,25 @@ input[type=number]{appearance:textfield}input[type=number]::-webkit-inner-spin-b
 .native-param .use-param{width:14px;flex:none}.native-command-form button[type=submit]{margin-top:16px}
 .native-query-result{font:11px monospace;white-space:pre-wrap;overflow-wrap:anywhere}
 #extended-tool{max-width:150px;flex-shrink:0}.native-layer,.local-mask-list button{display:block;text-align:left;width:100%;font-size:11px;border:0;border-radius:0;background:transparent;padding:8px}
+/* Five toolsets surround one canvas; docking remains independent of modes. */
+.tool-rail{width:66px;flex-shrink:0;padding:8px 3px;overflow-y:auto;scrollbar-width:thin}
+.tool-grid{display:grid;grid-template-columns:repeat(2,28px);gap:3px;margin-bottom:8px}
+.tool-grid[hidden]{display:none}.tool-group{position:relative;height:30px}
+.tool-rail .tool-grid button{width:28px;height:30px;border:0;border-radius:2px;padding:4px}
+.tool-rail .tool-grid button.active{background:#4e6685;color:white;box-shadow:inset 0 0 0 1px #92aed0}
+.tool-rail .tool-group .tool-group-more{position:absolute;bottom:0;right:0;width:10px;height:10px;padding:0;font-size:9px;line-height:8px;color:#aaa;background:none}
+.tool-rail [data-group]{width:28px}.tool-rail .rail-colors{margin:8px auto}
+.tool-flyout{position:fixed;z-index:90;width:260px;padding:4px;background:#303030;border:1px solid #555;box-shadow:3px 6px 20px #0007}
+.tool-flyout[hidden]{display:none}.tool-flyout strong{display:block;font-size:11px;color:#aaa;padding:6px 9px}
+.tool-choice{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:8px 10px;border:0;border-radius:0;font-size:12px;background:transparent}
+.tool-choice svg{width:18px;height:18px;flex-shrink:0}.tool-choice[aria-checked=true]{background:#485767}
+#selection-options{display:flex;gap:10px;font-size:11px;align-items:center}#selection-options[hidden]{display:none}#selection-options label{display:flex;align-items:center;gap:4px}#selection-options input{width:48px}
+.dock-heading{padding:5px 8px}.dock-heading strong{font-size:11px}.dock-tabs{overflow-x:auto;scrollbar-width:thin;flex-wrap:nowrap}.dock-tabs button{font-size:10px;flex-shrink:0;padding:6px}
+.graphic-scope{font-size:11px;line-height:1.5;color:var(--accent);padding:4px 0 9px}.graphic-properties h4{font-size:11px;color:#bbb;margin:15px 0 9px}.graphic-actions{display:flex;gap:4px;flex-wrap:wrap;margin:8px 0}.graphic-actions button{font-size:10px}
+.graphic-transform{display:grid;grid-template-columns:1fr 1fr;gap:8px}.graphic-transform label{display:flex;align-items:center;gap:5px;font-size:11px}.graphic-transform input{width:100%;min-width:0;padding:5px}
+.graphic-object{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;border-bottom:1px solid #444;border-radius:0;font-size:11px;padding:8px;background:transparent}.graphic-object svg{width:15px;height:15px}.graphic-object.active{background:#4d5261}
+.graphic-appearance textarea{width:100%;min-width:0;background:#252525;color:#ddd;border:1px solid #555;padding:5px;font:12px inherit}.graphic-appearance input[type=color]{width:40px;height:24px}
+@media(max-width:780px){.tool-rail{width:38px}.tool-grid{grid-template-columns:28px}.left-panel{left:38px}.tools #extended-tool{display:none}.graphic-transform{gap:4px}}
 .native-layer.active,.local-mask-list .active{background:#3e4851}.native-layer-section h3,.native-film-tools h3,.native-mask-section h3{font-size:12px}
 .local-mask-buttons,.native-film-actions{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}.native-track{display:flex;align-items:center;justify-content:space-between;padding:4px;font-size:11px}
 @media(max-width:700px){.native-catalog-toolbar{grid-template-columns:100px 1fr}.native-category{grid-column:1/-1}.native-catalog-body{grid-template-columns:1fr 1fr;gap:8px}}

@@ -2,11 +2,11 @@
 
 ## Motorerna
 
-PhotoCraft, LightCraft och FilmCrafts granskade versioner använder **MIT OR Apache-2.0**. Fullständiga licenser och respektive NOTICE finns i `public/licenses/{photocraft,lightcraft,filmcraft}/` och följer med statiska produktionsbyggnader. Creative Studios nya integrationskod har MIT-licens i rotens `LICENSE`.
+PhotoCraft, LightCraft, FilmCraft, VectorCraft och DesignCrafts granskade versioner använder **MIT OR Apache-2.0**. Fullständiga licenser och respektive NOTICE finns i `public/licenses/{photocraft,lightcraft,filmcraft,vectorcraft,designcraft}/` och följer med statiska produktionsbyggnader. Creative Studios nya integrationskod har MIT-licens i rotens `LICENSE`.
 
-De tre projekten har separat `docs/brand/LICENSE-brand.txt` och separat licens för appikonerna. ArtCraft-namn, wordmark och grafiska märken är inte öppna under kodlicensen. Varumärkesvillkoren kräver att modifierade/deriverade publicerade produkter tar bort märken och inte framställs som ArtCraft-produkter; användning utanför uttryckligt tillåtna sammanhang kräver rättighetshavarens tillstånd.
+Originalprojekten har separat `docs/brand/LICENSE-brand.txt` och separat licens för appikonerna. ArtCraft-namn, wordmark och grafiska märken är inte öppna under kodlicensen. Varumärkesvillkoren kräver att modifierade/deriverade publicerade produkter tar bort märken och inte framställs som ArtCraft-produkter; användning utanför uttryckligt tillåtna sammanhang kräver rättighetshavarens tillstånd.
 
-Creative Studio kopierar inga upstream-logotyper, appikoner, skärmbilder, översättningskataloger eller grafiska varumärkesfiler. Namnen PhotoCraft/LightCraft/FilmCraft förekommer som text för motorer/verktygslägen och attribution, inte som ArtCraft-produktmärke eller påstående om godkännande. Ny demoillustration och UI har skapats för detta projekt. Kontrollera produktnamn/domän och externa marknadsföringsmaterial separat före offentlig lansering.
+Creative Studio kopierar inga upstream-logotyper, appikoner, skärmbilder, översättningskataloger eller grafiska varumärkesfiler. Verktygsnamnen PhotoCraft/LightCraft/FilmCraft/VectorCraft/DesignCraft förekommer som text för motorer/verktygslägen och attribution, inte som ArtCraft-produktmärke eller påstående om godkännande. Ny demoillustration och UI har skapats för detta projekt. Kontrollera produktnamn/domän och externa marknadsföringsmaterial separat före offentlig lansering.
 
 ## Webb- och Rust-beroenden
 

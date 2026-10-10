@@ -336,6 +336,15 @@ pub struct PhotoOperation {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tools: Option<PhotoTools>,
 }
+/// Editable vector/page content is a scoped layer of this project. Native sessions
+/// are reconstructed from commands and never saved with their own history.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GraphicLayer {
+    pub id: String,
+    pub scope: Scope,
+    pub engine: String,
+    pub calls: Vec<NativeCall>,
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Workspace {
     pub mode: String,
@@ -359,6 +368,8 @@ pub struct Workspace {
     pub photo_clipboard: PhotoClipboard,
     #[serde(default)]
     pub native_target: Option<String>,
+    #[serde(default)]
+    pub graphic_target: Option<String>,
     #[serde(default)]
     pub active_mask: Option<u32>,
     #[serde(default)]
@@ -386,6 +397,7 @@ impl Default for Workspace {
             photo_tools: None,
             photo_clipboard: Default::default(),
             native_target: None,
+            graphic_target: None,
             active_mask: None,
             active_spot: None,
             active_clip_id: None,
@@ -424,6 +436,8 @@ pub struct Project {
     pub layers: Vec<Layer>,
     #[serde(default)]
     pub photo_operations: Vec<PhotoOperation>,
+    #[serde(default)]
+    pub graphic_layers: Vec<GraphicLayer>,
     pub workspace: Workspace,
     pub next_id: u64,
     /// Legacy projects retain source-only grading; new projects grade the shared canvas.
@@ -452,6 +466,7 @@ impl Default for Project {
             project_look: json!({}),
             layers: vec![],
             photo_operations: vec![],
+            graphic_layers: vec![],
             workspace: Workspace::default(),
             next_id: 1,
             develop_canvas: true,
@@ -644,7 +659,8 @@ impl Project {
         if frames > 0 && self.workspace.playhead >= frames {
             return Err("Tidspositionen ligger utanför projektet".into());
         }
-        if !["photo", "light", "film"].contains(&self.workspace.mode.as_str())
+        crate::graphics::validate(self)?;
+        if !["photo", "light", "film", "vector", "design"].contains(&self.workspace.mode.as_str())
             || !["frame", "range", "clip", "project"].contains(&self.workspace.scope.as_str())
         {
             return Err("Ogiltigt verktygsläge eller omfattning".into());

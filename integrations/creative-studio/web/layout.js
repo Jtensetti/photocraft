@@ -5,7 +5,7 @@ const defaults=()=>({panels:{media:{dock:'left',open:true},photo:{dock:'right',o
 export function createWorkspace({status,getPresentation,applyPresentation}){
   const left=document.getElementById('left-panel'),right=document.getElementById('right-panel');
   const saved=()=>{try{return JSON.parse(localStorage.getItem(KEY))||{layouts:{}};}catch{return {layouts:{}};}};
-  let view=defaults(),lastMode='photo';
+  let view=defaults(),lastMode='';
   const nodes={media:document.getElementById('media-panel'),photo:document.getElementById('photo-panel'),light:document.getElementById('light-panel'),film:document.getElementById('film-panel'),vector:document.getElementById('vector-panel'),design:document.getElementById('design-panel')};
   const cards={};
   for(const [id,node] of Object.entries(nodes)){

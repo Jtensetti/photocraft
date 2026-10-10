@@ -36,11 +36,8 @@ fn vector_and_layout_are_rendered_on_the_same_temporal_canvas_and_history() {
         "selection.set",
         json!({"clip_id":"clip-1","start":3,"end":10}),
     );
-    cmd(
-        &mut s,
-        "view.set",
-        json!({"scope":"range","playhead":5,"mode":"vector"}),
-    );
+    cmd(&mut s, "view.set", json!({"scope":"range","mode":"vector"}));
+    cmd(&mut s, "seek", json!({"frame":5}));
     native(
         &mut s,
         "vector",
@@ -79,6 +76,7 @@ fn vector_and_layout_are_rendered_on_the_same_temporal_canvas_and_history() {
         "frame.create",
         json!({"rect":[34,4,54,24],"shape":"rectangle","content":"unassigned"}),
     );
+    let outline = pixels(&s, 5);
     let inspect: Value = serde_json::from_str(&s.graphics_view("design").unwrap()).unwrap();
     let id = inspect["spreads"][0]["items"][0]["id"].as_u64().unwrap();
     assert!(frame["content_changed"].as_bool().unwrap());
@@ -86,7 +84,12 @@ fn vector_and_layout_are_rendered_on_the_same_temporal_canvas_and_history() {
     native(&mut s, "design", "object.fill", json!({"swatch":"[Black]"}));
     let both = pixels(&s, 5);
     assert_ne!(both, moved);
-    assert!(both[(8 * 64 + 40) * 4] < 20);
+    // DesignCraft defaults to print intent: K=100 converts to neutral RGB ~52.
+    assert!(
+        both[(8 * 64 + 40) * 4..(8 * 64 + 40) * 4 + 3]
+            .iter()
+            .all(|v| *v < 70)
+    );
     assert!(both[(8 * 64 + 18) * 4] > 240 && both[(8 * 64 + 18) * 4 + 1] < 20);
     let saved = s.save().unwrap();
     let mut reopened = Studio::new();
@@ -102,7 +105,7 @@ fn vector_and_layout_are_rendered_on_the_same_temporal_canvas_and_history() {
         assert_eq!(pixels(&reopened, 5), both);
     }
     cmd(&mut reopened, "undo", json!({}));
-    assert_eq!(pixels(&reopened, 5), moved);
+    assert_eq!(pixels(&reopened, 5), outline);
     cmd(&mut reopened, "redo", json!({}));
     assert_eq!(pixels(&reopened, 5), both);
 }
@@ -114,7 +117,8 @@ fn scopes_never_expand_and_survive_native_razor_and_legacy_trim() {
         "selection.set",
         json!({"clip_id":"clip-1","start":3,"end":15}),
     );
-    cmd(&mut s, "view.set", json!({"scope":"range","playhead":5}));
+    cmd(&mut s, "view.set", json!({"scope":"range"}));
+    cmd(&mut s, "seek", json!({"frame":5}));
     native(
         &mut s,
         "vector",

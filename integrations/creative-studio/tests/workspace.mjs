@@ -27,7 +27,7 @@ try{
   await page.waitForFunction(()=>creativeStudio.inspect().project.adjustments.length===1);
   let s=await page.evaluate(()=>creativeStudio.inspect());assert.equal(s.project.adjustments[0].scope.start,2);assert.equal(s.project.adjustments[0].scope.end,7);
   const content=JSON.stringify([s.project.assets,s.project.clips,s.project.adjustments,s.project.layers]);
-  await page.locator('[data-panel=photo] .dock-actions select').selectOption('right');await page.locator('#right-panel .dock-bar button').click();await page.locator('#right-panel .dock-tabs button').filter({hasText:'LightCraft'}).click();await page.locator('[data-panel=light] .dock-actions select').selectOption('left');
+  await page.locator('#right-panel .dock-bar select').selectOption('photo');await page.locator('#right-panel .dock-bar select').selectOption('light');await page.locator('[data-panel=light] .dock-actions select').selectOption('left');
   assert.ok(await page.locator('#left-panel #light-panel').isVisible());assert.ok(await page.locator('#right-panel #photo-panel').isVisible());
   await page.locator('[data-panel=photo] .dock-actions select').selectOption('float');assert.ok(await page.locator('.floating #photo-panel').isVisible());
   await page.evaluate(()=>creativeStudio.execute('view.set',{timeline_height:280,timeline_visible:false}));await page.locator('#layout-save').click();await page.locator('#layout-name').fill('Color + paint');await page.locator('#layout-form button[value=save]').click();
@@ -38,7 +38,7 @@ try{
   // Actual canvas pointer input, followed by an upstream-rendered mask.
   const canvas=await page.locator('#canvas').boundingBox();await page.locator('#color').fill('#ff0000');await page.locator('#brush-size').fill('110');
   await page.mouse.click(canvas.x+canvas.width*.5,canvas.y+canvas.height*.5);await page.waitForFunction(()=>creativeStudio.inspect().project.layers.length===1);
-  await page.locator('[data-tool=mask]').click();await page.mouse.move(canvas.x+1,canvas.y+1);await page.mouse.down();await page.mouse.move(canvas.x+canvas.width*.45,canvas.y+canvas.height-1,{steps:8});await page.mouse.up();
+  await page.locator('[data-group="Beskär och maskera"]').click({button:'right'});await page.locator('.tool-flyout [data-tool=mask]').click();await page.mouse.move(canvas.x+1,canvas.y+1);await page.mouse.down();await page.mouse.move(canvas.x+canvas.width*.45,canvas.y+canvas.height-1,{steps:8});await page.mouse.up();
   await page.waitForFunction(()=>creativeStudio.inspect().project.layers[0].mask!==null);
   await page.locator('[data-mode=film]').click();await page.locator('#timeline-detail').click();assert.ok(await page.locator('.layer-operation').isVisible());
   await page.locator('#volume').evaluate(el=>{el.value=50;el.dispatchEvent(new Event('change'));});await page.waitForFunction(()=>creativeStudio.inspect().active_clip.volume===.5);

@@ -1,0 +1,94 @@
+# Creative Studio 0.4 — arbetsytan
+
+Canvasen sitter kvar i mitten. Verktygsväxling öppnar en panel och lämnar projekt,
+spelhuvud, markering och historik intakta. PhotoCraft och LightCraft kan därför
+synas samtidigt. Panelhuvudet kan dras till den andra dockan; placeringsmenyn
+stödjer också vänster, höger och en flyttbar frikopplad panel. Dockor kan visa
+flikar eller staplade paneler. Paneler kan minimeras, döljas och återöppnas.
+Sidornas bredd och filmrullens höjd kan ändras genom att dra i respektive kant.
+Namngivna arbetsytor inkluderar dockning, panelbredder, sidornas synlighet samt
+filmrullens höjd och synlighet. De sparas separat i localStorage, utanför innehållshistoriken.
+
+Filmrullen zoomar kontinuerligt från projektöversikt till en miniatyr per bildruta.
+Klick väljer en ruta, Shift-klick förlänger intervallet från senaste klick och drag
+markerar ett sammanhängande intervall **inom samma klipp**. Dubbelklick väljer
+klippomfattning. I/O och piltangenter fungerar också. Sekvensens globala tid och
+klippets lokala bildrutenummer visas var för sig. Miniatyrer renderas från
+originalet vid behov, inklusive samma Rust-operationer som canvas/export. Bara
+synliga miniatyrer skapas; cachen är högst 128 bilder och två avkodare, separat
+från uppspelning. Vid mycket långa tidslinjer flyttas det synliga fönstret kring
+spelhuvudet för att undvika webbläsarens maximala elementbredd.
+
+**Spår** visar flera oberoende video- och ljudspår samt tidsband för lager.
+Dra klipphuvudet för att ändra start/spår och klippets kanter för att trimma.
+Dra lagerbandets ändhandtag för att ändra lagrets tidsomfattning. FilmCrafts
+effektinspektör visar riktiga parametrar och keyframes; ljudmixern använder
+spår, gain, mute och native effekter för både uppspelning och export.
+
+Redigeringens omfattning visas ovanför canvasen. Reglage och pensel fångar sitt
+scope när gesten börjar; en fördröjd uppdatering får aldrig byta mål efter en ny
+markering. Projektomfattning stöds för fotografiska justeringar. Explicit valda
+projektparametrar appliceras efter lokala parametrar; återställning tar bort
+justeringen inom vald omfattning. Lager kräver bildruta, intervall eller klipp.
+
+Text renderas med PhotoCrafts textmotor och bundlad Inter, utan HTML-text ovanpå
+canvasen. Text, pensel, rektangulär lagermask, opacitet, synlighet och förflyttning
+sparas i samma lageroperationer och följer med i PNG och video. Textverktyget
+skapar lager i vald omfattning; det valda lagrets start/slut kan sedan ändras i
+panel eller tidsband. Flyttaverktyget drar det valda lagret på canvasen. Lager
+kan skalas likformigt och roteras kring canvascentrum; text använder samma
+PhotoCraft Affine-transform. Rektangulära masker och penselmarkeringar ligger
+fortfarande i canvasens koordinater och följer inte lagertransformen.
+Native lager erbjuder dessutom PhotoCrafts penselmasker och fria
+transformationsmatriser genom originalkommandona. Interaktiva handtag för fri
+transform och perspektiv behöver fortsatt UI-arbete.
+
+FilmCraft-kommandon skapar en tillfällig vy över projektets auktoritativa
+sekvens. Ingen separat sparad FilmCraft-fil eller innehållshistorik skapas.
+Gemensamma scopes klipps till det behållna intervallet och räknas om mot samma källbildrutor.
+Omordning behåller klipp-ID, lokal bildruta och tillhörande operationer. Ljudets
+volym gäller både preview och export.
+
+Undo/redo flyttar bara innehåll mellan snapshots. Aktuell arbetsyta bevaras;
+spelhuvud, markering och lagerval repareras om återställd tidsstruktur gör dem
+ogiltiga. Automatiska återställningspunkter sparas efter innehållsändringar, utan
+att märka manuellt arbete som sparat. Startvyn och projektlistan erbjuder
+återställning. Återställning av backup-media använder en enda IndexedDB-
+transaktion så att ett lagringsfel inte lämnar ett halvåterställt mediebibliotek.
+
+WebM och MP4 kan laddas ned i minnet upp till 120 sekunder. **Spara video direkt till fil**
+använder File System Access i Chrome/Edge och en sökbar StreamTarget. Utdata skrivs
+successivt med 1 MiB muxerchunkar och dränerade köer; ljud och bild kodas
+interfolierat. En avbruten/felaktig direktlagring anropar `abort()` på filströmmen.
+Original läses fortfarande från Blob-delar. Testet avkodar en 121-sekunders
+export via en verklig OPFS-filström; en full 30-minuters kvalitets- och
+minnesprofil är fortfarande framtida validering.
+
+## Verktygsrad och framkallning
+
+Menyer och verktygsrad anropar samma kommandon som panelerna. Penselns hårdhet,
+opacitet, flöde och tryckinställning skickas till PhotoCraft BrushSettings.
+Bildmarkeringen fångas per penseldrag och avgränsar verkliga penselpixlar; den
+är oberoende av tidsmarkeringen. De 27 blandningslägena skickas till samma
+PhotoCraft-kompositor som PNG/video använder. Lagerduplicering och lagerordning
+ingår i den gemensamma innehållshistoriken. Pipetten läser renderade canvaspixlar.
+
+LightCrafts reglage byggs från Rust-motorns ControlSpec med faktiska gränser och
+standardvärden. RGB-kurvans punkter sparas som en enda tidsbegränsad operation,
+med strikt stigande x-värden. HSL, grading, detalj, effekter och övriga anslutna
+sektioner använder DevelopSettings och samma pipeline som export. Histogrammet
+beräknas från den aktuella renderade preview-bufferten. Numeriska reglage
+fångar sitt tidsmål vid geststart; kurvan skickar en operation vid avslutat drag.
+
+Canvaszoom och handverktygets panorering är presentation och påverkar varken
+projektpixlar, exportupplösning eller innehållshistorik. Zoom förstorar ännu
+preview-bufferten, inte en ny fullupplöst renderingsregion.
+
+**Alla verktyg (Ctrl/Cmd+K)** söker originalens kommandoregister och bygger
+parameterformulär från deras specifikationer. **Fler canvasverktyg** ansluter
+lasso, trollstav, retusch/kloning, gradient/fill, former, lokala justeringsmasker,
+spot removal och beskärning till samma canvas. Lokala masker har separata
+reglage för exponering, vitbalans, ljus, färg och detalj. Originalens PSD/pcraft-
+lager visas som redigerbara objekt. Scope visas vid canvasen och i
+kommandodialogen. Desktop-/enhets-/modellfunktioner markeras; full dialog- och
+desktopparitet är inte färdig.

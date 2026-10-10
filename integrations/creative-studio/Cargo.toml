@@ -1,0 +1,55 @@
+[package]
+name = "creative-studio"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[workspace]
+
+[dependencies]
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1"
+wasm-bindgen = "=0.2.129"
+photocraft-compose = { git = "https://github.com/Jtensetti/photocraft", rev = "64496178d0dbac2a152a942d044ab57b747d6d54" }
+photocraft-doc = { git = "https://github.com/Jtensetti/photocraft", rev = "64496178d0dbac2a152a942d044ab57b747d6d54" }
+photocraft-geom = { git = "https://github.com/Jtensetti/photocraft", rev = "64496178d0dbac2a152a942d044ab57b747d6d54" }
+photocraft-paint = { git = "https://github.com/Jtensetti/photocraft", rev = "64496178d0dbac2a152a942d044ab57b747d6d54" }
+photocraft-text = { git = "https://github.com/Jtensetti/photocraft", rev = "64496178d0dbac2a152a942d044ab57b747d6d54" }
+photocraft-raster = { git = "https://github.com/Jtensetti/photocraft", rev = "64496178d0dbac2a152a942d044ab57b747d6d54" }
+lightcraft-pipeline = { git = "https://github.com/Jtensetti/lightcraft", rev = "c4c96ecabbbaec73af3181c01010dc5d15c7fb85" }
+lightcraft-develop = { git = "https://github.com/Jtensetti/lightcraft", rev = "c4c96ecabbbaec73af3181c01010dc5d15c7fb85" }
+lightcraft-color = { git = "https://github.com/Jtensetti/lightcraft", rev = "c4c96ecabbbaec73af3181c01010dc5d15c7fb85" }
+lightcraft-geom = { git = "https://github.com/Jtensetti/lightcraft", rev = "c4c96ecabbbaec73af3181c01010dc5d15c7fb85" }
+lightcraft-raster = { git = "https://github.com/Jtensetti/lightcraft", rev = "c4c96ecabbbaec73af3181c01010dc5d15c7fb85" }
+filmcraft-edit = { git = "https://github.com/Jtensetti/filmcraft", rev = "5231852443363f001c3f6b396dd9b1e6461ae2be" }
+filmcraft-project = { git = "https://github.com/Jtensetti/filmcraft", rev = "5231852443363f001c3f6b396dd9b1e6461ae2be" }
+filmcraft-time = { git = "https://github.com/Jtensetti/filmcraft", rev = "5231852443363f001c3f6b396dd9b1e6461ae2be" }
+
+photocraft-engine = { git = "https://github.com/Jtensetti/photocraft", rev = "64496178d0dbac2a152a942d044ab57b747d6d54" }
+photocraft-format = { git = "https://github.com/Jtensetti/photocraft", rev = "64496178d0dbac2a152a942d044ab57b747d6d54" }
+photocraft-io = { git = "https://github.com/Jtensetti/photocraft", rev = "64496178d0dbac2a152a942d044ab57b747d6d54" }
+lightcraft-engine = { git = "https://github.com/Jtensetti/lightcraft", rev = "c4c96ecabbbaec73af3181c01010dc5d15c7fb85" }
+filmcraft-media = { git = "https://github.com/Jtensetti/filmcraft", rev = "5231852443363f001c3f6b396dd9b1e6461ae2be" }
+filmcraft-codecs = { git = "https://github.com/Jtensetti/filmcraft", rev = "5231852443363f001c3f6b396dd9b1e6461ae2be" }
+filmcraft-geom = { git = "https://github.com/Jtensetti/filmcraft", rev = "5231852443363f001c3f6b396dd9b1e6461ae2be" }
+filmcraft-frame = { git = "https://github.com/Jtensetti/filmcraft", rev = "5231852443363f001c3f6b396dd9b1e6461ae2be" }
+filmcraft-color = { git = "https://github.com/Jtensetti/filmcraft", rev = "5231852443363f001c3f6b396dd9b1e6461ae2be" }
+filmcraft-engine = { git = "https://github.com/Jtensetti/filmcraft", rev = "5231852443363f001c3f6b396dd9b1e6461ae2be" }
+filmcraft-export = { git = "https://github.com/Jtensetti/filmcraft", rev = "5231852443363f001c3f6b396dd9b1e6461ae2be" }
+filmcraft-h264enc = { git = "https://github.com/Jtensetti/filmcraft", rev = "5231852443363f001c3f6b396dd9b1e6461ae2be" }
+
+symphonia = { version = "0.5.5", default-features = false, features = ["mp3", "flac", "pcm", "wav", "aiff"] }
+vectorcraft-engine = { git = "https://github.com/Jtensetti/vectorcraft", rev = "da73a4613715a8e757f9c60d8d87265eebbb6a8b" }
+vectorcraft-render = { git = "https://github.com/Jtensetti/vectorcraft", rev = "da73a4613715a8e757f9c60d8d87265eebbb6a8b" }
+vectorcraft-geom = { git = "https://github.com/Jtensetti/vectorcraft", rev = "da73a4613715a8e757f9c60d8d87265eebbb6a8b" }
+designcraft-engine = { git = "https://github.com/Jtensetti/designcraft", rev = "9e4f69428f05db49fde3f695aa2431178e32ce5f" }
+designcraft-render = { git = "https://github.com/Jtensetti/designcraft", rev = "9e4f69428f05db49fde3f695aa2431178e32ce5f" }
+designcraft-geom = { git = "https://github.com/Jtensetti/designcraft", rev = "9e4f69428f05db49fde3f695aa2431178e32ce5f" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1

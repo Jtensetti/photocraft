@@ -1,0 +1,202 @@
+[
+  {
+    "name": "pulp-wasm-simd-flag",
+    "version": "0.1.1",
+    "license": "MIT",
+    "git_sha": "5eb07fd7b68edf0a5e19f71737d315f72a510295",
+    "file": "pulp-LICENSE",
+    "source_url": "https://github.com/sarah-quinones/pulp/blob/5eb07fd7b68edf0a5e19f71737d315f72a510295/LICENSE"
+  },
+  {
+    "name": "symphonia",
+    "version": "0.5.5",
+    "license": "MPL-2.0",
+    "git_sha": "6d533f26150953a882a6a111ebd13f0abf7129d5",
+    "file": "symphonia-LICENSE",
+    "source_url": "https://github.com/pdeljanov/Symphonia/blob/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+  },
+  {
+    "name": "symphonia-bundle-flac",
+    "version": "0.5.5",
+    "license": "MPL-2.0",
+    "git_sha": "6d533f26150953a882a6a111ebd13f0abf7129d5",
+    "file": "symphonia-LICENSE",
+    "source_url": "https://github.com/pdeljanov/Symphonia/blob/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+  },
+  {
+    "name": "symphonia-bundle-mp3",
+    "version": "0.5.5",
+    "license": "MPL-2.0",
+    "git_sha": "6d533f26150953a882a6a111ebd13f0abf7129d5",
+    "file": "symphonia-LICENSE",
+    "source_url": "https://github.com/pdeljanov/Symphonia/blob/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+  },
+  {
+    "name": "symphonia-codec-aac",
+    "version": "0.5.5",
+    "license": "MPL-2.0",
+    "git_sha": "6d533f26150953a882a6a111ebd13f0abf7129d5",
+    "file": "symphonia-LICENSE",
+    "source_url": "https://github.com/pdeljanov/Symphonia/blob/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+  },
+  {
+    "name": "symphonia-codec-alac",
+    "version": "0.5.5",
+    "license": "MPL-2.0",
+    "git_sha": "6d533f26150953a882a6a111ebd13f0abf7129d5",
+    "file": "symphonia-LICENSE",
+    "source_url": "https://github.com/pdeljanov/Symphonia/blob/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+  },
+  {
+    "name": "symphonia-codec-pcm",
+    "version": "0.5.5",
+    "license": "MPL-2.0",
+    "git_sha": "6d533f26150953a882a6a111ebd13f0abf7129d5",
+    "file": "symphonia-LICENSE",
+    "source_url": "https://github.com/pdeljanov/Symphonia/blob/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+  },
+  {
+    "name": "symphonia-codec-vorbis",
+    "version": "0.5.5",
+    "license": "MPL-2.0",
+    "git_sha": "6d533f26150953a882a6a111ebd13f0abf7129d5",
+    "file": "symphonia-LICENSE",
+    "source_url": "https://github.com/pdeljanov/Symphonia/blob/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+  },
+  {
+    "name": "symphonia-core",
+    "version": "0.5.5",
+    "license": "MPL-2.0",
+    "git_sha": "6d533f26150953a882a6a111ebd13f0abf7129d5",
+    "file": "symphonia-LICENSE",
+    "source_url": "https://github.com/pdeljanov/Symphonia/blob/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+  },
+  {
+    "name": "symphonia-format-isomp4",
+    "version": "0.5.5",
+    "license": "MPL-2.0",
+    "git_sha": "6d533f26150953a882a6a111ebd13f0abf7129d5",
+    "file": "symphonia-LICENSE",
+    "source_url": "https://github.com/pdeljanov/Symphonia/blob/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+  },
+  {
+    "name": "symphonia-format-ogg",
+    "version": "0.5.5",
+    "license": "MPL-2.0",
+    "git_sha": "6d533f26150953a882a6a111ebd13f0abf7129d5",
+    "file": "symphonia-LICENSE",
+    "source_url": "https://github.com/pdeljanov/Symphonia/blob/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+  },
+  {
+    "name": "symphonia-format-riff",
+    "version": "0.5.5",
+    "license": "MPL-2.0",
+    "git_sha": "6d533f26150953a882a6a111ebd13f0abf7129d5",
+    "file": "symphonia-LICENSE",
+    "source_url": "https://github.com/pdeljanov/Symphonia/blob/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+  },
+  {
+    "name": "symphonia-metadata",
+    "version": "0.5.5",
+    "license": "MPL-2.0",
+    "git_sha": "6d533f26150953a882a6a111ebd13f0abf7129d5",
+    "file": "symphonia-LICENSE",
+    "source_url": "https://github.com/pdeljanov/Symphonia/blob/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+  },
+  {
+    "name": "symphonia-utils-xiph",
+    "version": "0.5.5",
+    "license": "MPL-2.0",
+    "git_sha": "6d533f26150953a882a6a111ebd13f0abf7129d5",
+    "file": "symphonia-LICENSE",
+    "source_url": "https://github.com/pdeljanov/Symphonia/blob/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+  },
+  {
+    "name": "wasmi",
+    "version": "2.0.0",
+    "license": "MIT/Apache-2.0",
+    "git_sha": "2970aa871cc1001b57b267ccecdcd1e42306199e",
+    "file": "wasmi-LICENSE",
+    "source_url": "https://github.com/wasmi-labs/wasmi/blob/2970aa871cc1001b57b267ccecdcd1e42306199e/LICENSE-MIT"
+  },
+  {
+    "name": "wasmi_collections",
+    "version": "2.0.0",
+    "license": "MIT/Apache-2.0",
+    "git_sha": "2970aa871cc1001b57b267ccecdcd1e42306199e",
+    "file": "wasmi-LICENSE",
+    "source_url": "https://github.com/wasmi-labs/wasmi/blob/2970aa871cc1001b57b267ccecdcd1e42306199e/LICENSE-MIT"
+  },
+  {
+    "name": "wasmi_core",
+    "version": "2.0.0",
+    "license": "MIT/Apache-2.0",
+    "git_sha": "2970aa871cc1001b57b267ccecdcd1e42306199e",
+    "file": "wasmi-LICENSE",
+    "source_url": "https://github.com/wasmi-labs/wasmi/blob/2970aa871cc1001b57b267ccecdcd1e42306199e/LICENSE-MIT"
+  },
+  {
+    "name": "wasmi_ir",
+    "version": "2.0.0",
+    "license": "MIT/Apache-2.0",
+    "git_sha": "2970aa871cc1001b57b267ccecdcd1e42306199e",
+    "file": "wasmi-LICENSE",
+    "source_url": "https://github.com/wasmi-labs/wasmi/blob/2970aa871cc1001b57b267ccecdcd1e42306199e/LICENSE-MIT"
+  },
+  {
+    "name": "wasmparser",
+    "version": "0.228.0",
+    "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+    "git_sha": "e66235859a6ec0502bf6f9dcc358953eda4cafcc",
+    "file": "wasmparser-LICENSE",
+    "source_url": "https://github.com/bytecodealliance/wasm-tools/blob/e66235859a6ec0502bf6f9dcc358953eda4cafcc/LICENSE-MIT"
+  },
+  {
+    "name": "zune-core",
+    "version": "0.4.12",
+    "license": "MIT OR Apache-2.0 OR Zlib",
+    "git_sha": "f8fbb123d5ed04441e8324a555bfcda0cb1bd28f",
+    "file": "zune-LICENSE",
+    "source_url": "https://github.com/etemesi254/zune-image/blob/f8fbb123d5ed04441e8324a555bfcda0cb1bd28f/LICENSE-ZLIB"
+  },
+  {
+    "name": "zune-inflate",
+    "version": "0.2.54",
+    "license": "MIT OR Apache-2.0 OR Zlib",
+    "git_sha": "69502ce83fdfecdd0beefd677e2abb3781b29d98",
+    "file": "zune-inflate-LICENSE",
+    "source_url": "https://github.com/etemesi254/zune-image/blob/69502ce83fdfecdd0beefd677e2abb3781b29d98/LICENSE-ZLIB"
+  },
+  {
+    "name": "zune-jpeg",
+    "version": "0.4.21",
+    "license": "MIT OR Apache-2.0 OR Zlib",
+    "git_sha": "fa2c767a01d7d9373911d0bf63e0588553d67e0e",
+    "file": "zune-jpeg-LICENSE",
+    "source_url": "https://github.com/etemesi254/zune-image/blob/fa2c767a01d7d9373911d0bf63e0588553d67e0e/LICENSE-ZLIB"
+  },
+  {
+    "name": "krilla",
+    "version": "0.8.2",
+    "license": "MIT OR Apache-2.0",
+    "git_sha": "3ffdf0588cf98050aad6edba51ca70162e1fb5b5",
+    "file": "krilla-LICENSE-MIT",
+    "source_url": "https://github.com/LaurenzV/krilla/blob/3ffdf0588cf98050aad6edba51ca70162e1fb5b5/LICENSE_MIT"
+  },
+  {
+    "name": "krilla-svg",
+    "version": "0.8.1",
+    "license": "MIT OR Apache-2.0",
+    "git_sha": "3ffdf0588cf98050aad6edba51ca70162e1fb5b5",
+    "file": "krilla-LICENSE-MIT",
+    "source_url": "https://github.com/LaurenzV/krilla/blob/3ffdf0588cf98050aad6edba51ca70162e1fb5b5/LICENSE_MIT"
+  },
+  {
+    "name": "qrcodegen",
+    "version": "1.8.0",
+    "license": "MIT",
+    "git_sha": "720f62bddb7226106071d4728c292cb1df519ceb",
+    "file": "qrcodegen-LICENSE",
+    "source_url": "https://github.com/nayuki/QR-Code-generator/blob/720f62bddb7226106071d4728c292cb1df519ceb/rust/src/lib.rs"
+  }
+]

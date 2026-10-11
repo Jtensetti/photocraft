@@ -1,0 +1,127 @@
+# Build the existing native-Rust PhotoCraft web editor into a static WASM site.
+# PRs produce a downloadable test build; only main deploys to GitHub Pages.
+name: PhotoCraft website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/web-pages.yml
+      - apps/photocraft-web/**
+      - crates/**
+      - assets/**
+      - packaging/web/**
+      - .cargo/**
+      - Cargo.toml
+      - Cargo.lock
+  pull_request:
+    paths:
+      - .github/workflows/web-pages.yml
+      - apps/photocraft-web/**
+      - crates/**
+      - assets/**
+      - packaging/web/**
+      - .cargo/**
+      - Cargo.toml
+      - Cargo.lock
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: photocraft-web-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build browser editor (WebAssembly)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      TRUNK_VERSION: 0.21.14
+      PHOTOCRAFT_BUILD_SHA: ${{ github.sha }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust and WebAssembly target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: pages-web
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-on-failure: true
+
+      # Same Trunk version as the upstream release build and Dockerfile.
+      - name: Install Trunk
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset="trunk-x86_64-unknown-linux-musl.tar.gz"
+          url="https://github.com/trunk-rs/trunk/releases/download/v$TRUNK_VERSION"
+          curl -fsSL --retry 3 "$url/$asset" -o "$RUNNER_TEMP/$asset"
+          curl -fsSL --retry 3 "$url/$asset.sha256" -o "$RUNNER_TEMP/$asset.sha256"
+          printf '%s  %s\n' "$(cat "$RUNNER_TEMP/$asset.sha256")" "$RUNNER_TEMP/$asset" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$asset" -C "$HOME/.cargo/bin" trunk
+          trunk --version
+
+      - name: Build PhotoCraft for the browser
+        working-directory: apps/photocraft-web
+        run: trunk build --release --locked
+
+      # Preserve the licenses when distributing the static application.
+      - name: Prepare website and check bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s dist/web/index.html
+          mkdir -p dist/web/licenses
+          cp LICENSE-MIT LICENSE-APACHE NOTICE ATTRIBUTION.md dist/web/
+          cp assets/fonts/OFL-*.txt assets/icons/LICENSE-*.txt \
+            assets/dict/LICENSE-*.txt crates/ui-egui/src/i18n/LICENSE-translations.txt \
+            dist/web/licenses/
+          # Uses the existing upstream checks: relative URLs and WASM below 24 MiB.
+          packaging/web/package.sh --skip-build
+
+      # A PR offers the fully functional static site as a ZIP, without publishing it.
+      - name: Attach testable website ZIP
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: photocraft-browser-preview
+          path: dist/release/photocraft-web-*.zip
+          if-no-files-found: error
+
+      - name: Configure GitHub Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
+
+      - name: Upload site to GitHub Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist/web
+
+  deploy:
+    name: Publish PhotoCraft website
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

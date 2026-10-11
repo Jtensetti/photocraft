@@ -362,6 +362,8 @@ Installers and executables are code-signed.
 |---|---|---|
 | Static site | `photocraft-web-<ver>.zip` | Runs in a modern browser; host it on any static server |
 
+For this fork, see [Publish PhotoCraft in the browser](docs/publish-browser-editor.md) to enable automatic GitHub Pages deployment of the full WebAssembly editor.
+
 ## The Crafting Apps
 
 PhotoCraft is one of the **Crafting Apps**: free, open-source creative tools from the

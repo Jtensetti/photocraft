@@ -1,0 +1,8 @@
+/node_modules/
+/target/
+/dist/
+/public/pkg/
+/test-results/
+/public/licenses/rust/
+/public/licenses/dependencies.json
+/public/licenses/creative-studio-LICENSE

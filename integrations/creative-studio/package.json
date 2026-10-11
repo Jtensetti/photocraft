@@ -1,0 +1,29 @@
+{
+  "name": "creative-studio",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "node scripts/check-build.mjs && python3 scripts/license-notices.py && vite build",
+    "build:wasm": "bash scripts/build-wasm.sh",
+    "test": "cargo test",
+    "test:browser": "node tests/browser.mjs",
+    "test:production": "node tests/production.mjs",
+    "test:workspace": "node tests/workspace.mjs",
+    "test:pro": "node tests/pro.mjs",
+    "test:native": "node tests/native-browser.mjs",
+    "test:wasm": "node tests/wasm.mjs",
+    "test:graphics": "node tests/graphics-browser.mjs",
+    "test:engine": "node tests/engine-loader.mjs"
+  },
+  "dependencies": {
+    "mp4-muxer": "5.2.2",
+    "mp4box": "2.1.2",
+    "webm-muxer": "5.1.4"
+  },
+  "devDependencies": {
+    "playwright": "1.56.0",
+    "vite": "7.1.7"
+  }
+}
